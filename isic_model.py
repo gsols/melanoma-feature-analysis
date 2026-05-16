@@ -189,10 +189,11 @@ LGBM_PARAMS = {
     'colsample_bytree':  0.8,
     'reg_alpha':         0.1,
     'reg_lambda':        0.1,
-    'scale_pos_weight':  scale_pos_weight,
+    'scale_pos_weight': n_benign_train / n_malignant_train * 2,
     'random_state':      RANDOM_STATE,
     'n_jobs':            -1,
     'verbose':           -1,
+    'min_child_samples': 5, 
 }
 
 print("\n" + "=" * 60)
@@ -255,7 +256,7 @@ for fold, (train_idx, val_idx) in enumerate(splits):
         prec_vals, rec_vals, thresholds = precision_recall_curve(y_val, probs)
         f1_per_thr = 2 * prec_vals * rec_vals / (prec_vals + rec_vals + 1e-9)
         best_idx   = np.argmax(f1_per_thr)
-        best_thr   = thresholds[best_idx] if best_idx < len(thresholds) else 0.5
+        best_thr   = 0.30
     else:
         best_thr = 0.5
 
