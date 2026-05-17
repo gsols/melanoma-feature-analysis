@@ -74,8 +74,8 @@ from sklearn.ensemble import GradientBoostingClassifier
 RATIO = int(os.environ.get('RATIO', '5'))
 
 # NEW: Use stratified data with proper train/test split
-TRAIN_FILE = f'ratio_data_v2/train_ratio_{RATIO}_1.csv'  # Resampled training data only
-TEST_FILE  = 'ratio_data_v2/test_stratified.csv'          # Shared test set (both classes)
+TRAIN_FILE = f'ratio_data/train_ratio_{RATIO}_1.csv'  # Resampled training data only
+TEST_FILE  = 'ratio_data/test_ratio_shared.csv'          # Shared test set (both classes)
 
 DPI          = 150
 N_FOLDS      = 5
@@ -760,7 +760,7 @@ report_lines += [
     f"  {OUTPUT_FOLDER}/reports/v4_global_metrics.json",
     f"  {OUTPUT_FOLDER}/reports/{OUTPUT_PREFIX}_fold_metrics.csv",
     f"  {OUTPUT_FOLDER}/reports/{OUTPUT_PREFIX}_feature_importance.csv",
-    f"  {OUTPUT_FOLDER}/reports/{OUTPUT_PREFIX}_benign_risk_predictions.csv",
+    f"  {OUTPUT_FOLDER}/reports/{OUTPUT_PREFIX}_test_predictions.csv",
     f"  {OUTPUT_FOLDER}/graphs/v4_oof_confusion_matrix.png",
     f"  {OUTPUT_FOLDER}/graphs/v4_oof_precision_recall_curve.png",
     f"  {OUTPUT_FOLDER}/graphs/v4_feature_importance.png",
@@ -811,9 +811,9 @@ print("=" * 60)
 model_record = {
     'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
     'ratio': RATIO,
-    'min_child_samples': LGBM_PARAMS['min_child_samples'],
+    'min_samples_leaf': GB_PARAMS['min_samples_leaf'],
     'scale_pos_weight': effective_scale_pos_weight,
-    'n_estimators': LGBM_PARAMS['n_estimators'],
+    'n_estimators': GB_PARAMS['n_estimators'],
     'num_features_total': len(FEATURE_NAMES),
     'num_interaction_features': len(interaction_features),
     'cv_f1': round(cv_f1, 4),
@@ -853,7 +853,7 @@ print(f"    CV Recall            : {model_record['cv_recall']}")
 print(f"    CV Precision         : {model_record['cv_precision']}")
 print(f"    Screening Recall     : {model_record['screening_recall']}")
 print(f"    Screening Precision  : {model_record['screening_precision']}")
-print(f"    min_child_samples    : {model_record['min_child_samples']}")
+print(f"    min_samples_leaf     : {model_record['min_samples_leaf']}")
 print(f"    scale_pos_weight     : {model_record['scale_pos_weight']:.1f}")
 print(f"    Interaction features : {model_record['num_interaction_features']}")
 
