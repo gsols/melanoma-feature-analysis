@@ -41,12 +41,13 @@ from sklearn.metrics import (
 )
 from lightgbm import LGBMClassifier, early_stopping, log_evaluation
 
+  Interaction Features   : 5
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
 
-TRAIN_FILE = 'train_final.csv'   # 393 malignant + 80% benign
+TRAIN_FILE = 'train_final_oversampled_random_10x.csv'   # 393 malignant + 80% benign
 TEST_FILE  = 'test_final.csv'    # 20% benign — never seen by model
 
 REPORT_DIR   = 'reports'

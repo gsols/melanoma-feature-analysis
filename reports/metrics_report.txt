@@ -3,81 +3,81 @@ ISIC 2024 — LightGBM Metrics Report
 ============================================================
 
 DATASET SPLIT
-  train_final.csv   : 322,497 rows
-    Malignant (all) : 1,965
+  train_final.csv   : 324,462 rows
+    Malignant (all) : 3,930
     Benign (80%)    : 320,532
   test_final.csv    : 80,134 rows (benign only — never seen by model)
   Overlap           : 0 rows (confirmed clean split)
 
 MODEL CONFIGURATION
   Algorithm         : LightGBM
-  scale_pos_weight  : 65.25
-  Base imbalance    : 163.12
+  scale_pos_weight  : 32.62
+  Base imbalance    : 81.56
   Validation        : StratifiedKFold (k=5)
-  Threshold         : 0.3738 (global CV F1-optimal threshold)
+  Threshold         : 0.1111 (global CV F1-optimal threshold)
   Screening target  : recall >= 50%
-  Screening thresh. : 0.1822
+  Screening thresh. : 0.0833
 
 CROSS-VALIDATION RESULTS (on training set)
   Fold         F1   Accuracy   Precision   Recall   PR-AUC
   -------------------------------------------------------
-  1        0.2343     0.9904      0.2273   0.2417   0.0995
-  2        0.2733     0.9904      0.2544   0.2952   0.1305
-  3        0.2222     0.9900      0.2115   0.2341   0.0972
-  4        0.1945     0.9895      0.1822   0.2087   0.0761
-  5        0.2424     0.9900      0.2254   0.2621   0.0941
+  1        0.2840     0.9851      0.3392   0.2443   0.1694
+  2        0.3233     0.9854      0.3693   0.2875   0.2081
+  3        0.2859     0.9851      0.3422   0.2455   0.1720
+  4        0.3118     0.9854      0.3626   0.2735   0.1831
+  5        0.3220     0.9859      0.3861   0.2761   0.2095
   -------------------------------------------------------
-  MEAN     0.2333     0.9901      0.2202   0.2484   0.0995
-  STD      0.0288     0.0004      0.0263   0.0324   0.0196
+  MEAN     0.3054     0.9854      0.3599   0.2654   0.1884
+  STD      0.0192     0.0003      0.0195   0.0194   0.0193
 
 OVERALL CV METRICS (on training set)
-  F1        : 0.2334
-  Accuracy  : 0.9901
-  Precision : 0.2202
-  Recall    : 0.2483
-  PR-AUC    : 0.1065
-  Malignant caught: 488/1965 (24.8%)
+  F1        : 0.2990
+  Accuracy  : 0.9800
+  Precision : 0.2594
+  Recall    : 0.3529
+  PR-AUC    : 0.1808
+  Malignant caught: 1387/3930 (35.3%)
 
 SCREENING MODE (target recall >= 50%)
-  Threshold        : 0.1822
-  F1               : 0.1493
-  Accuracy         : 0.9620
-  Precision        : 0.0865
-  Recall           : 0.5476
-  Malignant caught : 1076/1965 (54.8%)
-  Benign flagged   : 11370/320532 (3.5%)
+  Threshold        : 0.0833
+  F1               : 0.2792
+  Accuracy         : 0.9679
+  Precision        : 0.1917
+  Recall           : 0.5137
+  Malignant caught : 2019/3930 (51.4%)
+  Benign flagged   : 8515/320532 (2.7%)
 
 RECALL TARGET TRADEOFFS
   Target      Thresh       F1     Prec   Recall   Benign flagged
   ------------------------------------------------------------------
-  30%         0.2773   0.2085   0.1502   0.3405    3,784 (  1.2%)
-  50%         0.1822   0.1493   0.0865   0.5476   11,370 (  3.5%)
-  70%         0.0715   0.0907   0.0484   0.7135   27,546 (  8.6%)
-  90%         0.0145   0.0398   0.0204   0.9008   85,114 ( 26.6%)
+  30%         0.1111   0.2990   0.2594   0.3529    3,960 (  1.2%)
+  50%         0.0833   0.2792   0.1917   0.5137    8,515 (  2.7%)
+  70%         0.0475   0.1900   0.1098   0.7056   22,486 (  7.0%)
+  90%         0.0190   0.0826   0.0433   0.9041   78,567 ( 24.5%)
 
 TEST SET RESULTS (unseen benign records)
   Records scored : 80,134
-  Prob mean      : 0.0217
-  Prob median    : 0.0078
-  Prob max       : 0.3738
-  Screening flags: 1,600/80,134 (2.0%)
+  Prob mean      : 0.0227
+  Prob median    : 0.0144
+  Prob max       : 0.2809
+  Screening flags: 2,384/80,134 (3.0%)
 
 RISK TIER DISTRIBUTION (test set)
-  Low          :   78,534  (98.0%)
-  Elevated     :    1,103  (1.4%)
-  High         :      497  (0.6%)
-  Very High    :        0  (0.0%)
+  Low          :   77,750  (97.0%)
+  Elevated     :      434  (0.5%)
+  High         :    1,944  (2.4%)
+  Very High    :        6  (0.0%)
 
 TOP 10 MOST IMPORTANT FEATURES
-  1    tbp_lv_norm_color                   importance=1.8
-  2    nevi_color_tension                  importance=1.8
-  3    tbp_lv_nevi_confidence              importance=1.4
-  4    log_area                            importance=1.2
-  5    color_x_size                        importance=1.0
-  6    tbp_lv_location_simple              importance=1.0
-  7    clin_size_long_diam_mm              importance=1.0
-  8    color_contrast_3d                   importance=0.6
-  9    stdL_ratio                          importance=0.4
-  10   radial_color_ratio                  importance=0.4
+  1    tbp_lv_nevi_confidence              importance=2.6
+  2    nevi_color_tension                  importance=2.6
+  3    clin_size_long_diam_mm              importance=1.8
+  4    tbp_lv_location_simple              importance=1.4
+  5    tbp_lv_norm_color                   importance=1.4
+  6    color_x_size                        importance=1.2
+  7    log_area                            importance=1.2
+  8    stdL_ratio                          importance=1.0
+  9    tbp_lv_deltaLBnorm                  importance=0.8
+  10   color_contrast_3d                   importance=0.8
 
 ============================================================
