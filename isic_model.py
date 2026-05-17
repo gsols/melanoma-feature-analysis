@@ -54,6 +54,7 @@ GRAPH_DIR    = 'graphs'
 DPI          = 150
 N_FOLDS      = 5
 RANDOM_STATE = 42
+TARGET_RECALL = 0.50
 
 COLOR_BENIGN    = '#2E86AB'
 COLOR_MALIGNANT = '#E84855'
@@ -211,6 +212,7 @@ else:
     print("  scale_pos_weight   : disabled  (threshold optimization handles imbalance)")
 print(f"  Validation         : StratifiedKFold (k={N_FOLDS})")
 print(f"  Threshold strategy : Optimal via precision-recall curve")
+print(f"  Screening target   : Recall >= {TARGET_RECALL:.0%}")
 print(f"  Early stopping     : 50 rounds")
 
 
@@ -312,6 +314,17 @@ print(f"  {'STD':<6} {'':>8} {'':>8} {'':>8} {'':>10} "
 df_folds.to_csv(f'{REPORT_DIR}/lgbm_fold_metrics.csv', index=False)
 print(f"\n  Saved: {REPORT_DIR}/lgbm_fold_metrics.csv")
 
+def threshold_for_target_recall(y_true, probs, target_recall):
+    prec_vals, rec_vals, thresholds = precision_recall_curve(y_true, probs)
+    valid_idx = np.where(rec_vals[:-1] >= target_recall)[0]
+
+    if len(valid_idx) == 0:
+        return thresholds[np.argmax(rec_vals[:-1])]
+
+    # Among thresholds that reach the recall target, choose the best precision.
+    best_valid_idx = valid_idx[np.argmax(prec_vals[valid_idx])]
+    return thresholds[best_valid_idx]
+
 # Overall CV metrics
 prec_overall, rec_overall, thresholds_overall = precision_recall_curve(y_train, cv_probs)
 f1_overall_by_threshold = 2 * prec_overall[:-1] * rec_overall[:-1] / (
@@ -320,10 +333,19 @@ f1_overall_by_threshold = 2 * prec_overall[:-1] * rec_overall[:-1] / (
 overall_threshold = thresholds_overall[np.argmax(f1_overall_by_threshold)]
 cv_preds_final    = (cv_probs >= overall_threshold).astype(int)
 
+recall_threshold = threshold_for_target_recall(y_train, cv_probs, TARGET_RECALL)
+cv_preds_recall  = (cv_probs >= recall_threshold).astype(int)
+
 cv_f1   = f1_score(y_train, cv_preds_final, zero_division=0)
 cv_acc  = accuracy_score(y_train, cv_preds_final)
 cv_prec = precision_score(y_train, cv_preds_final, zero_division=0)
 cv_rec  = recall_score(y_train, cv_preds_final, zero_division=0)
+
+recall_f1   = f1_score(y_train, cv_preds_recall, zero_division=0)
+recall_acc  = accuracy_score(y_train, cv_preds_recall)
+recall_prec = precision_score(y_train, cv_preds_recall, zero_division=0)
+recall_rec  = recall_score(y_train, cv_preds_recall, zero_division=0)
+
 try:
     cv_pr = average_precision_score(y_train, cv_probs)
 except Exception:
@@ -332,9 +354,42 @@ except Exception:
 cm_cv    = confusion_matrix(y_train, cv_preds_final)
 tn, fp, fn, tp = cm_cv.ravel()
 
+cm_recall = confusion_matrix(y_train, cv_preds_recall)
+recall_tn, recall_fp, recall_fn, recall_tp = cm_recall.ravel()
+
+target_rows = []
+for target in [0.30, 0.50, 0.70, 0.90]:
+    target_thr = threshold_for_target_recall(y_train, cv_probs, target)
+    target_preds = (cv_probs >= target_thr).astype(int)
+    target_cm = confusion_matrix(y_train, target_preds)
+    target_tn, target_fp, target_fn, target_tp = target_cm.ravel()
+    target_rows.append({
+        'target_recall': target,
+        'threshold': target_thr,
+        'f1': f1_score(y_train, target_preds, zero_division=0),
+        'accuracy': accuracy_score(y_train, target_preds),
+        'precision': precision_score(y_train, target_preds, zero_division=0),
+        'recall': recall_score(y_train, target_preds, zero_division=0),
+        'malignant_caught': target_tp,
+        'benign_flagged': target_fp,
+        'benign_flagged_pct': target_fp / n_benign_train * 100,
+    })
+
+df_recall_targets = pd.DataFrame(target_rows)
+df_recall_targets.to_csv(f'{REPORT_DIR}/lgbm_recall_target_metrics.csv', index=False)
+
 print(f"\n  CV Overall (global F1-optimal threshold={overall_threshold:.4f}):")
 print(f"    F1={cv_f1:.4f}  Acc={cv_acc:.4f}  Prec={cv_prec:.4f}  Rec={cv_rec:.4f}")
 print(f"    Malignant caught: {tp}/{n_malignant_train} ({tp/n_malignant_train*100:.1f}%)")
+
+print(f"\n  CV Screening Mode (target recall={TARGET_RECALL:.0%}, threshold={recall_threshold:.4f}):")
+print(f"    F1={recall_f1:.4f}  Acc={recall_acc:.4f}  "
+      f"Prec={recall_prec:.4f}  Rec={recall_rec:.4f}")
+print(f"    Malignant caught: {recall_tp}/{n_malignant_train} "
+      f"({recall_tp/n_malignant_train*100:.1f}%)")
+print(f"    Benign flagged: {recall_fp}/{n_benign_train} "
+      f"({recall_fp/n_benign_train*100:.1f}%)")
+print(f"    Saved recall tradeoffs: {REPORT_DIR}/lgbm_recall_target_metrics.csv")
 
 
 # =============================================================================
@@ -391,11 +446,12 @@ test_probs = best_model.predict_proba(X_test.values)[:, 1]
 # Reload original (unencoded) test data to save readable output
 df_test_out = pd.read_csv(TEST_FILE)
 df_test_out['lgbm_malignancy_prob'] = test_probs
+df_test_out['screening_flag'] = df_test_out['lgbm_malignancy_prob'] >= recall_threshold
 
 # Risk tier labels based on the CV-optimized operating threshold
-risk_cut_1 = max(float(overall_threshold), 1e-6)
-risk_cut_2 = min(risk_cut_1 * 2, 1.0)
-risk_cut_3 = min(risk_cut_1 * 4, 1.0)
+risk_cut_1 = max(float(recall_threshold), 1e-6)
+risk_cut_2 = max(float(overall_threshold), risk_cut_1 * 1.01)
+risk_cut_3 = min(max(risk_cut_2 * 2, risk_cut_2 + 1e-6), 1.0)
 risk_bins = [0.00, risk_cut_1, risk_cut_2, risk_cut_3, 1.01]
 risk_labels = ['Low', 'Elevated', 'High', 'Very High']
 
@@ -426,8 +482,14 @@ for tier, count in tier_counts.items():
     bar = '█' * int(pct / 2)
     print(f"    {tier:<12} : {count:>8,} ({pct:>5.1f}%)  {bar}")
 
+screening_count = int(df_test_out['screening_flag'].sum())
+screening_pct = screening_count / len(df_test_out) * 100
+print(f"\n  Screening mode flags:")
+print(f"    Threshold      : {recall_threshold:.4f}")
+print(f"    Test flagged   : {screening_count:,}/{len(df_test_out):,} ({screening_pct:.1f}%)")
+
 print(f"\n  Top 20 highest-risk benign records:")
-display_cols = ['lgbm_malignancy_prob', 'risk_tier', 'age_approx',
+display_cols = ['lgbm_malignancy_prob', 'risk_tier', 'screening_flag', 'age_approx',
                 'anatom_site_general', 'clin_size_long_diam_mm',
                 'tbp_lv_nevi_confidence', 'tbp_lv_norm_border']
 display_cols = [c for c in display_cols if c in df_test_out.columns]
@@ -645,7 +707,9 @@ ax.plot(thresholds_range, precs, color=COLOR_BENIGN,    linewidth=2,
 ax.plot(thresholds_range, recs,  color=COLOR_NEUTRAL,   linewidth=2,
         label='Recall', linestyle=':')
 ax.axvline(overall_threshold, color='black', linestyle='--', linewidth=1.5,
-           label=f'Chosen threshold ({overall_threshold:.3f})')
+           label=f'F1 threshold ({overall_threshold:.3f})')
+ax.axvline(recall_threshold, color='red', linestyle='-.', linewidth=1.5,
+           label=f'{TARGET_RECALL:.0%} recall threshold ({recall_threshold:.3f})')
 ax.set_xlabel('Classification Threshold')
 ax.set_ylabel('Score')
 ax.set_title('Threshold Sensitivity', fontweight='bold')
@@ -682,6 +746,8 @@ report_lines = [
     f"  Base imbalance    : {scale_pos_weight:.2f}",
     f"  Validation        : StratifiedKFold (k={N_FOLDS})",
     f"  Threshold         : {overall_threshold:.4f} (global CV F1-optimal threshold)",
+    f"  Screening target  : recall >= {TARGET_RECALL:.0%}",
+    f"  Screening thresh. : {recall_threshold:.4f}",
     "",
     "CROSS-VALIDATION RESULTS (on training set)",
     f"  {'Fold':<6} {'F1':>8} {'Accuracy':>10} {'Precision':>11} {'Recall':>8} {'PR-AUC':>8}",
@@ -709,11 +775,35 @@ report_lines += [
     f"  PR-AUC    : {cv_pr:.4f}",
     f"  Malignant caught: {tp}/{n_malignant_train} ({tp/n_malignant_train*100:.1f}%)",
     "",
+    f"SCREENING MODE (target recall >= {TARGET_RECALL:.0%})",
+    f"  Threshold        : {recall_threshold:.4f}",
+    f"  F1               : {recall_f1:.4f}",
+    f"  Accuracy         : {recall_acc:.4f}",
+    f"  Precision        : {recall_prec:.4f}",
+    f"  Recall           : {recall_rec:.4f}",
+    f"  Malignant caught : {recall_tp}/{n_malignant_train} ({recall_tp/n_malignant_train*100:.1f}%)",
+    f"  Benign flagged   : {recall_fp}/{n_benign_train} ({recall_fp/n_benign_train*100:.1f}%)",
+    "",
+    "RECALL TARGET TRADEOFFS",
+    f"  {'Target':<8} {'Thresh':>9} {'F1':>8} {'Prec':>8} {'Recall':>8} {'Benign flagged':>16}",
+    "  " + "-"*66,
+]
+
+for _, row in df_recall_targets.iterrows():
+    report_lines.append(
+        f"  {row['target_recall']:<8.0%} {row['threshold']:>9.4f} "
+        f"{row['f1']:>8.4f} {row['precision']:>8.4f} {row['recall']:>8.4f} "
+        f"{int(row['benign_flagged']):>8,} ({row['benign_flagged_pct']:>5.1f}%)"
+    )
+
+report_lines += [
+    "",
     "TEST SET RESULTS (unseen benign records)",
     f"  Records scored : {n_test:,}",
     f"  Prob mean      : {test_probs.mean():.4f}",
     f"  Prob median    : {np.median(test_probs):.4f}",
     f"  Prob max       : {test_probs.max():.4f}",
+    f"  Screening flags: {screening_count:,}/{len(df_test_out):,} ({screening_pct:.1f}%)",
     "",
     "RISK TIER DISTRIBUTION (test set)",
 ]
@@ -759,8 +849,15 @@ print(f"""
     CV PR-AUC    : {cv_pr:.4f}
     Malignant caught (CV) : {tp}/{n_malignant_train} ({tp/n_malignant_train*100:.1f}%)
 
+  SCREENING MODE ({TARGET_RECALL:.0%} recall target):
+    Threshold       : {recall_threshold:.4f}
+    Recall          : {recall_rec:.4f}
+    Precision       : {recall_prec:.4f}
+    Benign flagged  : {recall_fp:,}/{n_benign_train:,} ({recall_fp/n_benign_train*100:.1f}%)
+
   TEST SET OUTPUT:
     {n_test:,} unseen benign records scored and ranked
+    Screening flagged: {screening_count:,} ({screening_pct:.1f}%)
     Saved to: {REPORT_DIR}/benign_risk_predictions.csv
 
   GRAPHS SAVED ({len(saved_graphs)} files):""")

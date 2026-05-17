@@ -15,6 +15,8 @@ MODEL CONFIGURATION
   Base imbalance    : 815.60
   Validation        : StratifiedKFold (k=5)
   Threshold         : 0.0784 (global CV F1-optimal threshold)
+  Screening target  : recall >= 50%
+  Screening thresh. : 0.0121
 
 CROSS-VALIDATION RESULTS (on training set)
   Fold         F1   Accuracy   Precision   Recall   PR-AUC
@@ -36,17 +38,35 @@ OVERALL CV METRICS (on training set)
   PR-AUC    : 0.0568
   Malignant caught: 62/393 (15.8%)
 
+SCREENING MODE (target recall >= 50%)
+  Threshold        : 0.0121
+  F1               : 0.0753
+  Accuracy         : 0.9849
+  Precision        : 0.0407
+  Recall           : 0.5013
+  Malignant caught : 197/393 (50.1%)
+  Benign flagged   : 4645/320532 (1.4%)
+
+RECALL TARGET TRADEOFFS
+  Target      Thresh       F1     Prec   Recall   Benign flagged
+  ------------------------------------------------------------------
+  30%         0.0346   0.1095   0.0668   0.3028    1,662 (  0.5%)
+  50%         0.0121   0.0753   0.0407   0.5013    4,645 (  1.4%)
+  70%         0.0030   0.0323   0.0165   0.7023   16,424 (  5.1%)
+  90%         0.0007   0.0113   0.0057   0.9008   62,119 ( 19.4%)
+
 TEST SET RESULTS (unseen benign records)
   Records scored : 80,134
   Prob mean      : 0.0012
   Prob median    : 0.0002
   Prob max       : 0.4133
+  Screening flags: 1,159/80,134 (1.4%)
 
 RISK TIER DISTRIBUTION (test set)
-  Low          :   80,003  (99.8%)
-  Elevated     :      109  (0.1%)
-  High         :       19  (0.0%)
-  Very High    :        3  (0.0%)
+  Low          :   78,975  (98.6%)
+  Elevated     :    1,028  (1.3%)
+  High         :      109  (0.1%)
+  Very High    :       22  (0.0%)
 
 TOP 10 MOST IMPORTANT FEATURES
   1    color_contrast_3d                   importance=204.2
