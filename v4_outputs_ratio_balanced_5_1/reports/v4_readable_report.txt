@@ -1,0 +1,93 @@
+================================================================================
+ISIC 2024 — V4 LightGBM Model with Benign:Malignant Ratio-Balanced Data
+================================================================================
+
+DATASET
+  Total rows         : 300,000
+  Malignant          : 50,000  (SMOTE synthetic oversampled)
+  Benign             : 250,000  (randomly undersampled)
+  Benign:Malignant   : 5:1
+  Test set (benign)  : 80,134
+
+MODEL
+  Algorithm          : LightGBM
+  CV design          : StratifiedKFold (k=5)
+  n_estimators       : 1000
+  scale_pos_weight   : 2.0
+  Parallelization    : -1 jobs
+  Interaction features : 5 engineering features
+  Total features     : 36
+
+THRESHOLD POLICY
+  Optimal threshold  : 0.745341  (F1-optimal on CV)
+  Screening threshold: 0.993392  (target recall 50%)
+
+OUT-OF-FOLD METRICS (Cross-Validation on Training Set)
+  PR-AUC             : 0.999964
+  ROC-AUC            : 0.999992
+  F1                 : 0.998900
+  Precision          : 0.999339
+  Recall             : 0.998460
+  Confusion matrix   : TP=49923, FP=33, FN=77, TN=249967
+
+MEAN ± STD ACROSS FOLDS
+  metric             mean        std
+  --------------------------------
+  f1             0.998940   0.000288
+  accuracy       0.999660   0.000114
+  precision      0.999080   0.000277
+  recall         0.998820   0.000409
+  pr_auc         0.999980   0.000045
+
+TEST SET EVALUATION (Specificity on Unseen Benign Records)
+  Test set size      : 80,134  (0 malignant, 80134 benign)
+  Test F1            : 0.000000
+  Test Accuracy      : 1.000000
+  Test Precision     : 0.000000
+  Test Recall        : 0.000000  (sensitivity on available malignant)
+  Test PR-AUC        : 0.000000
+  Confusion matrix   : TP=0, FP=0, FN=0, TN=80134
+  Malignant caught   : N/A (no malignant in test)
+  False positives    : 0/80134  (0.0%)
+
+TEST SET PROBABILITY STATISTICS
+  Prob mean (all)    : 0.000265
+  Prob mean (benign) : 0.000265
+  Prob mean (malig)  : N/A
+  Prob max           : 0.616572
+
+TOP 20 FEATURES
+  rank   feature                               importance
+  -------------------------------------------------------
+  1      age_approx                                3386.8
+  2      tbp_lv_nevi_confidence                    1694.8
+  3      nevi_color_tension                        1605.6
+  4      color_contrast_3d                         1441.6
+  5      tbp_lv_deltaLBnorm                        1299.4
+  6      stdL_ratio                                1210.4
+  7      tbp_lv_symm_2axis                         1117.6
+  8      radial_color_ratio                        1004.2
+  9      tbp_lv_eccentricity                        999.6
+  10     chroma_contrast                            991.6
+  11     color_contrast_ratio                       980.2
+  12     elongation                                 934.2
+  13     log_area                                   852.0
+  14     chroma_x_symm                              813.4
+  15     area_x_border                              798.2
+  16     tbp_lv_norm_border                         796.0
+  17     tbp_lv_radial_color_std_max                779.0
+  18     color_x_size                               773.2
+  19     clin_size_long_diam_mm                     764.8
+  20     compactness                                764.0
+
+OUTPUT FILES
+  v4_outputs_ratio_balanced_5_1/reports/v4_readable_report.txt
+  v4_outputs_ratio_balanced_5_1/reports/v4_global_metrics.json
+  v4_outputs_ratio_balanced_5_1/reports/v4_ratio_5_fold_metrics.csv
+  v4_outputs_ratio_balanced_5_1/reports/v4_ratio_5_feature_importance.csv
+  v4_outputs_ratio_balanced_5_1/reports/v4_ratio_5_test_predictions.csv
+  v4_outputs_ratio_balanced_5_1/graphs/v4_oof_confusion_matrix.png
+  v4_outputs_ratio_balanced_5_1/graphs/v4_oof_precision_recall_curve.png
+  v4_outputs_ratio_balanced_5_1/graphs/v4_feature_importance.png
+
+================================================================================
