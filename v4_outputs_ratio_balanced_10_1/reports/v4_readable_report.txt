@@ -1,0 +1,83 @@
+================================================================================
+ISIC 2024 — V4 LightGBM Model with Benign:Malignant Ratio-Balanced Data
+================================================================================
+
+DATASET
+  Total rows         : 300,000
+  Malignant          : 27,272  (SMOTE synthetic oversampled)
+  Benign             : 272,728  (randomly undersampled)
+  Benign:Malignant   : 10:1
+  Test set (benign)  : 80,134
+
+MODEL
+  Algorithm          : LightGBM
+  CV design          : StratifiedKFold (k=5)
+  n_estimators       : 1500
+  min_child_samples  : 75
+  scale_pos_weight   : 4.00  (imbalance weight)
+  Interaction features : 5 engineering features
+  Total features     : 36
+
+THRESHOLD POLICY
+  Optimal threshold  : 0.601503  (F1-optimal on CV)
+  Screening threshold: 0.979393  (target recall 50%)
+
+OUT-OF-FOLD METRICS (Cross-Validation on Training Set)
+  PR-AUC             : 0.998783
+  ROC-AUC            : 0.999865
+  F1                 : 0.985298
+  Precision          : 0.985190
+  Recall             : 0.985406
+  Confusion matrix   : TP=26874, FP=404, FN=398, TN=272324
+
+MEAN ± STD ACROSS FOLDS
+  metric             mean        std
+  --------------------------------
+  f1             0.985600   0.001098
+  accuracy       0.997380   0.000192
+  precision      0.986280   0.000867
+  recall         0.984860   0.001905
+  pr_auc         0.998780   0.000045
+
+TEST SET PREDICTIONS (Unseen Benign Records)
+  Records scored     : 80,134
+  Prob mean          : 0.002084
+  Prob median        : 0.000151
+  Prob max           : 0.574043
+  Screening flagged  : 0  (0.0%)
+
+TOP 20 FEATURES
+  rank   feature                               importance
+  -------------------------------------------------------
+  1      age_approx                                2576.8
+  2      tbp_lv_nevi_confidence                     904.8
+  3      nevi_color_tension                         841.2
+  4      tbp_lv_deltaLBnorm                         812.2
+  5      color_contrast_3d                          803.8
+  6      anatom_site_general_lower extremity        702.0
+  7      tbp_lv_location_simple_Torso Front         698.6
+  8      tbp_lv_eccentricity                        605.4
+  9      stdL_ratio                                 603.2
+  10     elongation                                 544.4
+  11     chroma_contrast                            543.6
+  12     clin_size_long_diam_mm                     537.2
+  13     radial_color_ratio                         528.4
+  14     tbp_lv_symm_2axis                          520.8
+  15     log_area                                   519.0
+  16     anatom_site_general_upper extremity        469.2
+  17     anatom_site_general_head/neck              459.8
+  18     color_contrast_ratio                       456.2
+  19     chroma_x_symm                              447.0
+  20     color_x_size                               443.0
+
+OUTPUT FILES
+  v4_outputs_ratio_balanced_10_1/reports/v4_readable_report.txt
+  v4_outputs_ratio_balanced_10_1/reports/v4_global_metrics.json
+  v4_outputs_ratio_balanced_10_1/reports/v4_ratio_10_fold_metrics.csv
+  v4_outputs_ratio_balanced_10_1/reports/v4_ratio_10_feature_importance.csv
+  v4_outputs_ratio_balanced_10_1/reports/v4_ratio_10_benign_risk_predictions.csv
+  v4_outputs_ratio_balanced_10_1/graphs/v4_oof_confusion_matrix.png
+  v4_outputs_ratio_balanced_10_1/graphs/v4_oof_precision_recall_curve.png
+  v4_outputs_ratio_balanced_10_1/graphs/v4_feature_importance.png
+
+================================================================================
