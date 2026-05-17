@@ -54,7 +54,7 @@ GRAPH_DIR    = 'graphs'
 DPI          = 150
 N_FOLDS      = 5
 RANDOM_STATE = 42
-TARGET_RECALL = 0.70
+TARGET_RECALL = 0.50
 
 COLOR_BENIGN    = '#2E86AB'
 COLOR_MALIGNANT = '#E84855'
@@ -185,8 +185,8 @@ effective_scale_pos_weight = scale_pos_weight * CLASS_WEIGHT_MULTIPLIER
 LGBM_PARAMS = {
     'n_estimators':      1200,
     'learning_rate':     0.03,
-    'num_leaves':        7,
-    'max_depth':         3,
+    'num_leaves':        15,
+    'max_depth':         4,
     'min_child_samples': 200,
     'subsample':         0.8,
     'subsample_freq':    1,
