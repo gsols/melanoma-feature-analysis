@@ -1,1 +1,6 @@
 *.csv
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.matplotlib-cache/

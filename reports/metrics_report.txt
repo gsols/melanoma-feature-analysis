@@ -11,52 +11,53 @@ DATASET SPLIT
 
 MODEL CONFIGURATION
   Algorithm         : LightGBM
-  scale_pos_weight  : 815.60
+  scale_pos_weight  : disabled
+  Base imbalance    : 815.60
   Validation        : StratifiedKFold (k=5)
-  Threshold         : 0.3000 (median of fold optimal thresholds)
+  Threshold         : 0.0784 (global CV F1-optimal threshold)
 
 CROSS-VALIDATION RESULTS (on training set)
   Fold         F1   Accuracy   Precision   Recall   PR-AUC
   -------------------------------------------------------
-  1        0.0028     0.9098      0.0014   0.1013   0.0010
-  2        0.0038     0.9178      0.0019   0.1266   0.0018
-  3        0.0050     0.9503      0.0026   0.1013   0.0014
-  4        0.0099     0.9064      0.0050   0.3846   0.0082
-  5        0.0033     0.9336      0.0017   0.0897   0.0011
+  1        0.1565     0.9961      0.1070   0.2911   0.0846
+  2        0.1353     0.9972      0.1094   0.1772   0.0570
+  3        0.0996     0.9932      0.0596   0.3038   0.0527
+  4        0.1667     0.9980      0.1667   0.1667   0.0775
+  5        0.1125     0.9978      0.1098   0.1154   0.0543
   -------------------------------------------------------
-  MEAN     0.0050     0.9236      0.0025   0.1607   0.0027
-  STD      0.0029     0.0183      0.0015   0.1259   0.0031
+  MEAN     0.1341     0.9965      0.1105   0.2108   0.0652
+  STD      0.0284     0.0020      0.0380   0.0826   0.0147
 
 OVERALL CV METRICS (on training set)
-  F1        : 0.0051
-  Accuracy  : 0.9236
-  Precision : 0.0026
-  Recall    : 0.1603
-  PR-AUC    : 0.0023
-  Malignant caught: 63/393 (16.0%)
+  F1        : 0.1272
+  Accuracy  : 0.9973
+  Precision : 0.1065
+  Recall    : 0.1578
+  PR-AUC    : 0.0568
+  Malignant caught: 62/393 (15.8%)
 
 TEST SET RESULTS (unseen benign records)
   Records scored : 80,134
-  Prob mean      : 0.0953
-  Prob median    : 0.0094
-  Prob max       : 1.0000
+  Prob mean      : 0.0012
+  Prob median    : 0.0002
+  Prob max       : 0.4133
 
 RISK TIER DISTRIBUTION (test set)
-  Low          :   72,889  (91.0%)
-  Moderate     :        0  (0.0%)
-  High         :        0  (0.0%)
-  Very High    :    7,245  (9.0%)
+  Low          :   80,003  (99.8%)
+  Elevated     :      109  (0.1%)
+  High         :       19  (0.0%)
+  Very High    :        3  (0.0%)
 
 TOP 10 MOST IMPORTANT FEATURES
-  1    clin_size_long_diam_mm              importance=8.4
-  2    color_contrast_3d                   importance=8.4
-  3    tbp_lv_radial_color_std_max         importance=7.0
-  4    chroma_contrast                     importance=4.4
-  5    tbp_lv_color_std_mean               importance=4.4
-  6    tbp_lv_deltaLBnorm                  importance=3.4
-  7    tbp_lv_eccentricity                 importance=3.0
-  8    tbp_lv_location_simple              importance=2.8
-  9    tbp_lv_nevi_confidence              importance=2.8
-  10   tbp_lv_area_perim_ratio             importance=2.8
+  1    color_contrast_3d                   importance=204.2
+  2    tbp_lv_deltaLBnorm                  importance=158.0
+  3    chroma_contrast                     importance=157.0
+  4    clin_size_long_diam_mm              importance=151.8
+  5    tbp_lv_nevi_confidence              importance=125.2
+  6    log_area                            importance=123.6
+  7    stdL_ratio                          importance=123.0
+  8    age_approx                          importance=118.8
+  9    tbp_lv_location_simple              importance=107.0
+  10   tbp_lv_eccentricity                 importance=105.6
 
 ============================================================

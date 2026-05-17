@@ -23,10 +23,11 @@
 
 import pandas as pd
 import numpy as np
+import os
+os.environ.setdefault('MPLCONFIGDIR', os.path.join(os.getcwd(), '.matplotlib-cache'))
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import seaborn as sns
-import os
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -177,30 +178,37 @@ for i, col in enumerate(FEATURE_NAMES, 1):
 # =============================================================================
 
 scale_pos_weight = n_benign_train / n_malignant_train
+CLASS_WEIGHT_MULTIPLIER = 0.0
+effective_scale_pos_weight = scale_pos_weight * CLASS_WEIGHT_MULTIPLIER
 
 LGBM_PARAMS = {
-    'n_estimators':      2000,
-    'learning_rate':     0.05,
-    'num_leaves':        31,
-    'max_depth':         -1,
-    'min_child_samples': 20,
+    'n_estimators':      1200,
+    'learning_rate':     0.03,
+    'num_leaves':        7,
+    'max_depth':         3,
+    'min_child_samples': 200,
     'subsample':         0.8,
     'subsample_freq':    1,
     'colsample_bytree':  0.8,
-    'reg_alpha':         0.1,
-    'reg_lambda':        0.1,
-    'scale_pos_weight': n_benign_train / n_malignant_train * 2,
+    'reg_alpha':         0.5,
+    'reg_lambda':        2.0,
     'random_state':      RANDOM_STATE,
     'n_jobs':            -1,
     'verbose':           -1,
-    'min_child_samples': 5, 
 }
+
+if CLASS_WEIGHT_MULTIPLIER > 0:
+    LGBM_PARAMS['scale_pos_weight'] = effective_scale_pos_weight
 
 print("\n" + "=" * 60)
 print("STEP 4 — Model configuration")
 print("=" * 60)
 print(f"  Algorithm          : LightGBM")
-print(f"  scale_pos_weight   : {scale_pos_weight:.1f}  (handles 1020:1 imbalance)")
+if CLASS_WEIGHT_MULTIPLIER > 0:
+    print(f"  scale_pos_weight   : {effective_scale_pos_weight:.1f}  "
+          f"({CLASS_WEIGHT_MULTIPLIER:.2f}x base imbalance weight)")
+else:
+    print("  scale_pos_weight   : disabled  (threshold optimization handles imbalance)")
 print(f"  Validation         : StratifiedKFold (k={N_FOLDS})")
 print(f"  Threshold strategy : Optimal via precision-recall curve")
 print(f"  Early stopping     : 50 rounds")
@@ -254,9 +262,11 @@ for fold, (train_idx, val_idx) in enumerate(splits):
     # Optimal threshold via precision-recall curve
     if y_val.sum() > 0:
         prec_vals, rec_vals, thresholds = precision_recall_curve(y_val, probs)
-        f1_per_thr = 2 * prec_vals * rec_vals / (prec_vals + rec_vals + 1e-9)
-        best_idx   = np.argmax(f1_per_thr)
-        best_thr   = 0.30
+        f1_per_thr = 2 * prec_vals[:-1] * rec_vals[:-1] / (
+            prec_vals[:-1] + rec_vals[:-1] + 1e-9
+        )
+        best_idx = np.argmax(f1_per_thr)
+        best_thr = thresholds[best_idx]
     else:
         best_thr = 0.5
 
@@ -303,7 +313,11 @@ df_folds.to_csv(f'{REPORT_DIR}/lgbm_fold_metrics.csv', index=False)
 print(f"\n  Saved: {REPORT_DIR}/lgbm_fold_metrics.csv")
 
 # Overall CV metrics
-overall_threshold = np.median(best_thresholds)
+prec_overall, rec_overall, thresholds_overall = precision_recall_curve(y_train, cv_probs)
+f1_overall_by_threshold = 2 * prec_overall[:-1] * rec_overall[:-1] / (
+    prec_overall[:-1] + rec_overall[:-1] + 1e-9
+)
+overall_threshold = thresholds_overall[np.argmax(f1_overall_by_threshold)]
 cv_preds_final    = (cv_probs >= overall_threshold).astype(int)
 
 cv_f1   = f1_score(y_train, cv_preds_final, zero_division=0)
@@ -318,7 +332,7 @@ except Exception:
 cm_cv    = confusion_matrix(y_train, cv_preds_final)
 tn, fp, fn, tp = cm_cv.ravel()
 
-print(f"\n  CV Overall (threshold={overall_threshold:.4f}):")
+print(f"\n  CV Overall (global F1-optimal threshold={overall_threshold:.4f}):")
 print(f"    F1={cv_f1:.4f}  Acc={cv_acc:.4f}  Prec={cv_prec:.4f}  Rec={cv_rec:.4f}")
 print(f"    Malignant caught: {tp}/{n_malignant_train} ({tp/n_malignant_train*100:.1f}%)")
 
@@ -378,11 +392,17 @@ test_probs = best_model.predict_proba(X_test.values)[:, 1]
 df_test_out = pd.read_csv(TEST_FILE)
 df_test_out['lgbm_malignancy_prob'] = test_probs
 
-# Risk tier labels
+# Risk tier labels based on the CV-optimized operating threshold
+risk_cut_1 = max(float(overall_threshold), 1e-6)
+risk_cut_2 = min(risk_cut_1 * 2, 1.0)
+risk_cut_3 = min(risk_cut_1 * 4, 1.0)
+risk_bins = [0.00, risk_cut_1, risk_cut_2, risk_cut_3, 1.01]
+risk_labels = ['Low', 'Elevated', 'High', 'Very High']
+
 df_test_out['risk_tier'] = pd.cut(
     df_test_out['lgbm_malignancy_prob'],
-    bins=[0.00, 0.25, 0.50, 0.75, 1.01],
-    labels=['Low', 'Moderate', 'High', 'Very High'],
+    bins=risk_bins,
+    labels=risk_labels,
     right=False,
 )
 
@@ -559,9 +579,9 @@ fig.suptitle('Malignancy Risk Probability Distribution\n(Unseen Test Benign Reco
 
 axes[0].hist(test_probs, bins=80, color=COLOR_BENIGN,
              alpha=0.8, edgecolor='white', linewidth=0.3)
-for thr, col, lbl in [(0.25,'green','Low→Moderate (0.25)'),
-                       (0.50,'orange','Moderate→High (0.50)'),
-                       (0.75,'red','High→Very High (0.75)')]:
+for thr, col, lbl in [(risk_cut_1, 'green', f'Low→Elevated ({risk_cut_1:.3f})'),
+                       (risk_cut_2, 'orange', f'Elevated→High ({risk_cut_2:.3f})'),
+                       (risk_cut_3, 'red', f'High→Very High ({risk_cut_3:.3f})')]:
     axes[0].axvline(thr, color=col, linestyle='--', linewidth=1.5, label=lbl)
 axes[0].set_xlabel('P(malignant | features)')
 axes[0].set_ylabel('Count')
@@ -571,7 +591,7 @@ axes[0].legend(fontsize=8)
 sorted_p = np.sort(test_probs)
 cdf      = np.arange(1, len(sorted_p)+1) / len(sorted_p)
 axes[1].plot(sorted_p, cdf, color=COLOR_BENIGN, linewidth=2)
-for thr, col in [(0.25,'green'),(0.50,'orange'),(0.75,'red')]:
+for thr, col in [(risk_cut_1, 'green'), (risk_cut_2, 'orange'), (risk_cut_3, 'red')]:
     axes[1].axvline(thr, color=col, linestyle='--', linewidth=1.5)
 axes[1].set_xlabel('P(malignant | features)')
 axes[1].set_ylabel('Proportion of test records')
@@ -584,7 +604,7 @@ save_graph(fig, 'lgbm_test_probability_distribution.png')
 # ── Graph 7: Risk tier bar chart ─────────────────────────────────────────────
 
 fig, ax = plt.subplots(figsize=(8, 5))
-tier_order  = ['Low', 'Moderate', 'High', 'Very High']
+tier_order  = risk_labels
 tier_counts = df_test_out['risk_tier'].value_counts()
 tier_vals   = [tier_counts.get(t, 0) for t in tier_order]
 tier_colors = ['#57CC99', COLOR_NEUTRAL, COLOR_MALIGNANT, '#8B0000']
@@ -658,9 +678,10 @@ report_lines = [
     "",
     "MODEL CONFIGURATION",
     f"  Algorithm         : LightGBM",
-    f"  scale_pos_weight  : {scale_pos_weight:.2f}",
+    f"  scale_pos_weight  : {'disabled' if CLASS_WEIGHT_MULTIPLIER == 0 else f'{effective_scale_pos_weight:.2f}'}",
+    f"  Base imbalance    : {scale_pos_weight:.2f}",
     f"  Validation        : StratifiedKFold (k={N_FOLDS})",
-    f"  Threshold         : {overall_threshold:.4f} (median of fold optimal thresholds)",
+    f"  Threshold         : {overall_threshold:.4f} (global CV F1-optimal threshold)",
     "",
     "CROSS-VALIDATION RESULTS (on training set)",
     f"  {'Fold':<6} {'F1':>8} {'Accuracy':>10} {'Precision':>11} {'Recall':>8} {'PR-AUC':>8}",
@@ -697,7 +718,7 @@ report_lines += [
     "RISK TIER DISTRIBUTION (test set)",
 ]
 
-for tier in ['Low', 'Moderate', 'High', 'Very High']:
+for tier in risk_labels:
     count = tier_counts.get(tier, 0)
     pct   = count / len(df_test_out) * 100
     report_lines.append(f"  {tier:<12} : {count:>8,}  ({pct:.1f}%)")
