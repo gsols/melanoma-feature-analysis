@@ -15,58 +15,58 @@ DATASET
 MODEL
   Algorithm         : LightGBM balanced undersampling ensemble
   Bags              : 30
-  Benign ratio/bag  : 10:1
+  Benign ratio/bag  : 5:1
   Estimators/bag    : 200
   Original features : 48 non-ID metadata + engineered features
   Transformed feats : 81
 
 MAIN TEST METRICS
-  PR-AUC            : 0.060665
-  ROC-AUC           : 0.960879
-  Best-F1 threshold : 0.949196
-  F1                : 0.167300
-  Precision         : 0.118919
-  Recall            : 0.282051
-  Confusion matrix  : TP=22, FP=163, FN=56, TN=79970
+  PR-AUC            : 0.061106
+  ROC-AUC           : 0.959365
+  Best-F1 threshold : 0.963344
+  F1                : 0.168889
+  Precision         : 0.129252
+  Recall            : 0.243590
+  Confusion matrix  : TP=19, FP=128, FN=59, TN=80005
 
 TOP-K RECALL
  top_k  malignant_caught  top_k_recall  top_k_precision
-   100                 9      0.115385         0.090000
-   500                35      0.448718         0.070000
-  1000                42      0.538462         0.042000
-  5000                64      0.820513         0.012800
-   802                39      0.500000         0.048628
-  4010                60      0.769231         0.014963
+   100                10      0.128205         0.100000
+   500                33      0.423077         0.066000
+  1000                40      0.512821         0.040000
+  5000                61      0.782051         0.012200
+   802                37      0.474359         0.046135
+  4010                59      0.756410         0.014713
 
 HIGH-RECALL OPERATING POINTS
   These are evaluation operating points. In a final system, choose thresholds using validation/CV, not the test set.
  target_recall  threshold  actual_recall  precision  tp   fp  fn    tn
-           0.7   0.623784       0.705128   0.019784  55 2725  23 77408
-           0.8   0.457901       0.807692   0.013161  63 4724  15 75409
-           0.9   0.223590       0.910256   0.007143  71 9869   7 70264
+           0.7   0.674821       0.705128   0.019636  55 2746  23 77387
+           0.8   0.498014       0.807692   0.012348  63 5039  15 75094
+           0.9   0.289181       0.910256   0.007589  71 9285   7 70848
 
 TOP 20 FEATURES
  rank                     feature  importance  importance_std
-    1      clin_size_long_diam_mm  124.200000       11.522153
-    2                    tbp_lv_H  108.533333       10.917061
-    3               tbp_lv_deltaB   94.900000        9.360734
-    4                    tbp_lv_y   91.066667       12.795659
-    5                  age_approx   86.833333       13.483529
-    6          tbp_lv_minorAxisMM   79.600000       13.014351
-    7          tbp_lv_deltaLBnorm   79.166667       10.341126
-    8              tbp_lv_stdLExt   77.400000       12.587295
-    9      tbp_lv_nevi_confidence   77.266667       13.539900
-   10                    tbp_lv_z   71.633333        7.578405
-   11                    tbp_lv_B   71.500000       10.184138
-   12                    tbp_lv_x   63.233333        8.781357
-   13                 tbp_lv_Hext   62.833333       13.820476
-   14               tbp_lv_deltaA   61.433333        8.589464
-   15                 tbp_lv_Lext   59.133333       11.514435
-   16                 tbp_lv_Aext   58.733333       11.474416
-   17          radial_color_ratio   58.366667       10.001611
-   18              tbp_lv_areaMM2   58.033333       11.323967
-   19           color_contrast_3d   55.133333       10.101925
-   20 tbp_lv_radial_color_std_max   55.133333        7.450876
+    1      clin_size_long_diam_mm  128.700000       13.662967
+    2                    tbp_lv_H  112.400000       13.951344
+    3                    tbp_lv_y   93.066667       15.534764
+    4               tbp_lv_deltaB   92.400000       13.654303
+    5                  age_approx   83.733333       17.427819
+    6          tbp_lv_minorAxisMM   77.766667       10.566246
+    7              tbp_lv_stdLExt   74.666667        8.881942
+    8      tbp_lv_nevi_confidence   74.233333       10.790994
+    9          tbp_lv_deltaLBnorm   71.100000       10.851574
+   10                    tbp_lv_z   69.566667       10.787905
+   11                    tbp_lv_B   65.233333       12.357679
+   12                    tbp_lv_x   64.766667       11.729403
+   13               tbp_lv_deltaA   63.166667       10.730279
+   14          tbp_lv_perimeterMM   61.066667       13.628239
+   15                 tbp_lv_Aext   59.700000       10.674424
+   16                 tbp_lv_Hext   57.266667        9.705439
+   17 tbp_lv_radial_color_std_max   56.900000        9.964437
+   18              tbp_lv_areaMM2   55.400000       11.155268
+   19                 tbp_lv_Lext   53.533333        8.609039
+   20          radial_color_ratio   51.700000       10.211595
 
 OUTPUT FILES
   v2_outputs/reports/v2_metrics_summary.csv

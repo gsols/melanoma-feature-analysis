@@ -1,0 +1,25 @@
+Ratio 20:1 (benign:malignant) Resampling Summary
+============================================================
+
+Original Train Data
+  Total rows   : 320,925
+  Malignant    : 393
+  Benign       : 320,532
+  Ratio        : 815.60:1
+
+Resampled Train Data (ratio 20:1)
+  Target total : 300,000 rows
+  Total rows   : 300,000
+  Malignant    : 14,285 (SMOTE synthetic oversampled)
+  Benign       : 285,715 (undersampled from 320,532)
+  Ratio        : 20.00:1
+
+Test Data (unchanged)
+  Total rows   : 80,134
+  Malignant    : 0
+  Benign       : 80,134
+
+Resampling Method
+  Oversampling : SMOTE (synthetic minority class generation)
+  Undersampling: RandomUnderSampler (majority class reduction)
+  Random state : 42

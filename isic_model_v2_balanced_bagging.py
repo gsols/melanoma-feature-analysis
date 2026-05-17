@@ -65,7 +65,7 @@ TEST_SIZE = float(os.getenv("TEST_SIZE", "0.20"))
 
 # Balanced bagging settings
 N_BAGS = int(os.getenv("N_BAGS", "30"))
-BENIGN_TO_MALIGNANT_RATIO = int(os.getenv("BENIGN_RATIO", "10"))  # try 5, 10, 20
+BENIGN_TO_MALIGNANT_RATIO = int(os.getenv("BENIGN_RATIO", "5"))  # try 5, 10, 20
 N_ESTIMATORS = int(os.getenv("N_ESTIMATORS", "200"))
 
 # Use patient-level split when possible to reduce patient leakage.
