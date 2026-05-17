@@ -61,6 +61,7 @@ COLOR_MALIGNANT = '#E84855'
 COLOR_NEUTRAL   = '#F4A261'
 
 CATEGORICAL_COLS = ['sex', 'anatom_site_general', 'tbp_lv_location_simple']
+MODEL_REGISTRY_FILE = 'reports/model_registry.csv'
 
 
 # =============================================================================
@@ -175,19 +176,67 @@ for i, col in enumerate(FEATURE_NAMES, 1):
 
 
 # =============================================================================
+# STEP 3.5 — Feature Engineering: Create Interaction Features
+# =============================================================================
+
+print("\n" + "=" * 60)
+print("STEP 3.5 — Creating interaction features")
+print("=" * 60)
+
+interaction_features = {}
+
+# Interaction 1: Color contrast × Clinical size (color intensity + lesion size)
+if 'color_contrast_3d' in X_train.columns and 'clin_size_long_diam_mm' in X_train.columns:
+    X_train['color_x_size'] = X_train['color_contrast_3d'] * X_train['clin_size_long_diam_mm']
+    X_test['color_x_size'] = X_test['color_contrast_3d'] * X_test['clin_size_long_diam_mm']
+    interaction_features['color_x_size'] = 'color_contrast_3d × clin_size'
+
+# Interaction 2: Chroma contrast × Symmetry (color variance + shape regularity)
+if 'chroma_contrast' in X_train.columns and 'tbp_lv_symm_2axis' in X_train.columns:
+    X_train['chroma_x_symm'] = X_train['chroma_contrast'] * X_train['tbp_lv_symm_2axis']
+    X_test['chroma_x_symm'] = X_test['chroma_contrast'] * X_test['tbp_lv_symm_2axis']
+    interaction_features['chroma_x_symm'] = 'chroma_contrast × tbp_lv_symm_2axis'
+
+# Interaction 3: Color ratio (differential color properties)
+if 'color_contrast_3d' in X_train.columns and 'chroma_contrast' in X_train.columns:
+    X_train['color_contrast_ratio'] = X_train['color_contrast_3d'] / (X_train['chroma_contrast'] + 1e-6)
+    X_test['color_contrast_ratio'] = X_test['color_contrast_3d'] / (X_test['chroma_contrast'] + 1e-6)
+    interaction_features['color_contrast_ratio'] = 'color_contrast_3d / chroma_contrast'
+
+# Interaction 4: Size × Eccentricity (size + shape elongation)
+if 'clin_size_long_diam_mm' in X_train.columns and 'tbp_lv_eccentricity' in X_train.columns:
+    X_train['size_x_ecc'] = X_train['clin_size_long_diam_mm'] * X_train['tbp_lv_eccentricity']
+    X_test['size_x_ecc'] = X_test['clin_size_long_diam_mm'] * X_test['tbp_lv_eccentricity']
+    interaction_features['size_x_ecc'] = 'clin_size × tbp_lv_eccentricity'
+
+# Interaction 5: Area × Border norm (size + border irregularity)
+if 'log_area' in X_train.columns and 'tbp_lv_norm_border' in X_train.columns:
+    X_train['area_x_border'] = X_train['log_area'] * X_train['tbp_lv_norm_border']
+    X_test['area_x_border'] = X_test['log_area'] * X_test['tbp_lv_norm_border']
+    interaction_features['area_x_border'] = 'log_area × tbp_lv_norm_border'
+
+print(f"  Created {len(interaction_features)} interaction features:")
+for feat_name, formula in interaction_features.items():
+    print(f"    • {feat_name:25} = {formula}")
+
+FEATURE_NAMES = list(X_train.columns)
+print(f"\n  Total features after engineering: {len(FEATURE_NAMES)}")
+
+
+# =============================================================================
 # STEP 4 — LightGBM configuration
 # =============================================================================
 
 scale_pos_weight = n_benign_train / n_malignant_train
-CLASS_WEIGHT_MULTIPLIER = 0.0
+CLASS_WEIGHT_MULTIPLIER = 0.4
 effective_scale_pos_weight = scale_pos_weight * CLASS_WEIGHT_MULTIPLIER
 
 LGBM_PARAMS = {
-    'n_estimators':      1200,
+    'n_estimators':      1500,
     'learning_rate':     0.03,
     'num_leaves':        15,
     'max_depth':         4,
-    'min_child_samples': 200,
+    'min_child_samples': 75,
     'subsample':         0.8,
     'subsample_freq':    1,
     'colsample_bytree':  0.8,
@@ -205,14 +254,17 @@ print("\n" + "=" * 60)
 print("STEP 4 — Model configuration")
 print("=" * 60)
 print(f"  Algorithm          : LightGBM")
+print(f"  n_estimators       : {LGBM_PARAMS['n_estimators']}")
+print(f"  min_child_samples  : {LGBM_PARAMS['min_child_samples']}  (relaxed from 200 for minority learning)")
 if CLASS_WEIGHT_MULTIPLIER > 0:
     print(f"  scale_pos_weight   : {effective_scale_pos_weight:.1f}  "
-          f"({CLASS_WEIGHT_MULTIPLIER:.2f}x base imbalance weight)")
+          f"({CLASS_WEIGHT_MULTIPLIER:.2f}x base imbalance weight — ENABLED)")
 else:
     print("  scale_pos_weight   : disabled  (threshold optimization handles imbalance)")
 print(f"  Validation         : StratifiedKFold (k={N_FOLDS})")
 print(f"  Threshold strategy : Optimal via precision-recall curve")
 print(f"  Screening target   : Recall >= {TARGET_RECALL:.0%}")
+print(f"  Feature engineering: {len(interaction_features)} interaction features added")
 print(f"  Early stopping     : 50 rounds")
 
 
@@ -831,6 +883,64 @@ with open(f'{REPORT_DIR}/metrics_report.txt', 'w') as f:
     f.write(report_text)
 
 print(f"\n  Saved: {REPORT_DIR}/metrics_report.txt")
+
+
+# =============================================================================
+# STEP 10 — Record Model to Registry
+# =============================================================================
+
+print("\n" + "=" * 60)
+print("STEP 10 — Recording model to registry")
+print("=" * 60)
+
+import datetime
+
+model_record = {
+    'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    'min_child_samples': LGBM_PARAMS['min_child_samples'],
+    'scale_pos_weight': effective_scale_pos_weight,
+    'n_estimators': LGBM_PARAMS['n_estimators'],
+    'num_features_total': len(FEATURE_NAMES),
+    'num_interaction_features': len(interaction_features),
+    'cv_f1': round(cv_f1, 4),
+    'cv_accuracy': round(cv_acc, 4),
+    'cv_precision': round(cv_prec, 4),
+    'cv_recall': round(cv_rec, 4),
+    'cv_pr_auc': round(cv_pr, 4),
+    'cv_malignant_caught': int(tp),
+    'cv_malignant_caught_pct': round(tp/n_malignant_train*100, 1),
+    'screening_f1': round(recall_f1, 4),
+    'screening_precision': round(recall_prec, 4),
+    'screening_recall': round(recall_rec, 4),
+    'screening_benign_flagged': int(recall_fp),
+    'screening_benign_flagged_pct': round(recall_fp/n_benign_train*100, 1),
+    'test_prob_mean': round(test_probs.mean(), 4),
+    'test_prob_median': round(np.median(test_probs), 4),
+    'test_prob_max': round(test_probs.max(), 4),
+    'test_screening_flagged': screening_count,
+    'test_screening_flagged_pct': round(screening_pct, 1),
+}
+
+if not os.path.exists(MODEL_REGISTRY_FILE):
+    df_registry = pd.DataFrame([model_record])
+else:
+    df_registry = pd.read_csv(MODEL_REGISTRY_FILE)
+    df_registry = pd.concat([df_registry, pd.DataFrame([model_record])], ignore_index=True)
+
+df_registry.to_csv(MODEL_REGISTRY_FILE, index=False)
+
+print(f"\n  Model registry saved to: {MODEL_REGISTRY_FILE}")
+print(f"  Total models recorded: {len(df_registry)}")
+print(f"\n  Latest model summary:")
+print(f"    Timestamp            : {model_record['timestamp']}")
+print(f"    CV F1                : {model_record['cv_f1']}")
+print(f"    CV Recall            : {model_record['cv_recall']}")
+print(f"    CV Precision         : {model_record['cv_precision']}")
+print(f"    Screening Recall     : {model_record['screening_recall']}")
+print(f"    Screening Precision  : {model_record['screening_precision']}")
+print(f"    min_child_samples    : {model_record['min_child_samples']}")
+print(f"    scale_pos_weight     : {model_record['scale_pos_weight']:.1f}")
+print(f"    Interaction features : {model_record['num_interaction_features']}")
 
 
 # =============================================================================
