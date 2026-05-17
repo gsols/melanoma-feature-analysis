@@ -1,0 +1,86 @@
+============================================================================
+ISIC 2024 — V3 Repeated Patient-Group CV Balanced Bagging
+============================================================================
+
+DATASET
+  Total rows         : 401,059
+  Benign             : 400,666
+  Malignant          : 393
+  Patient-group CV   : True
+
+MODEL
+  CV design          : 5 folds x 3 repeat(s)
+  Algorithm          : LightGBM balanced undersampling ensemble
+  Bags per fold      : 30
+  Benign ratio/bag   : 10:1
+  Estimators/bag     : 200
+  Original features  : 48 non-ID metadata + engineered features
+
+THRESHOLD POLICY
+  Thresholds for fold-level classification were selected from inner validation,
+  not from the outer held-out test fold.
+  Inner target recall: 0.80
+  Global report threshold: median inner threshold = 0.334530
+
+GLOBAL OUT-OF-FOLD METRICS
+  PR-AUC             : 0.062830
+  ROC-AUC            : 0.946811
+  F1                 : 0.018145
+  Precision          : 0.009171
+  Recall             : 0.849873
+  Confusion matrix   : TP=334, FP=36087, FN=59, TN=364579
+
+MEAN ± STD ACROSS OUTER FOLDS
+   metric         mean         std          min          max
+   pr_auc     0.071128    0.025615     0.037744     0.124649
+  roc_auc     0.945899    0.016006     0.919163     0.969170
+       f1     0.018076    0.006524     0.007594     0.031142
+precision     0.009152    0.003344     0.003812     0.015877
+   recall     0.841547    0.060145     0.769231     0.987952
+       tp    66.200000    5.918494    60.000000    82.000000
+       fp  8502.733333 4654.001296  3905.000000 21431.000000
+       fn    12.400000    4.656792     1.000000    18.000000
+       tn 71630.466667 4653.901725 58702.000000 76228.000000
+
+GLOBAL TOP-K OUT-OF-FOLD RECALL
+ top_k  malignant_caught  top_k_recall  top_k_precision
+   100                22      0.055980         0.220000
+   500                61      0.155216         0.122000
+  1000               106      0.269720         0.106000
+  5000               204      0.519084         0.040800
+  4010               188      0.478372         0.046883
+ 20052               299      0.760814         0.014911
+
+TOP 20 FEATURES
+ rank                     feature  importance  importance_std
+    1      clin_size_long_diam_mm  137.235556        7.749977
+    2                    tbp_lv_H  115.975556        5.278385
+    3                    tbp_lv_y  101.560000       13.713244
+    4               tbp_lv_deltaB   88.031111        5.471143
+    5          tbp_lv_deltaLBnorm   79.455556        7.948931
+    6                  age_approx   75.315556       10.847360
+    7      tbp_lv_nevi_confidence   75.137778        5.808831
+    8                    tbp_lv_B   75.060000        8.681528
+    9              tbp_lv_stdLExt   73.062222        5.727279
+   10                    tbp_lv_z   73.020000        7.542754
+   11          tbp_lv_minorAxisMM   67.844444        6.495025
+   12           color_contrast_3d   67.522222        7.149821
+   13               tbp_lv_deltaA   66.468889        4.823956
+   14                 tbp_lv_Aext   64.131111        6.024559
+   15                    tbp_lv_x   63.646667        6.634491
+   16          tbp_lv_perimeterMM   61.673333        3.824819
+   17                 tbp_lv_Hext   60.604444        4.822218
+   18          radial_color_ratio   59.311111        4.605478
+   19 tbp_lv_radial_color_std_max   55.984444        6.761878
+   20              tbp_lv_areaMM2   55.313333        2.941703
+
+OUTPUT FILES
+  v3_outputs_ratio10_r3/reports/v3_global_metrics.csv
+  v3_outputs_ratio10_r3/reports/v3_cv_metrics_by_fold.csv
+  v3_outputs_ratio10_r3/reports/v3_cv_metric_mean_std.csv
+  v3_outputs_ratio10_r3/reports/v3_top_k_global_oof.csv
+  v3_outputs_ratio10_r3/reports/v3_feature_importance.csv
+  v3_outputs_ratio10_r3/reports/v3_oof_predictions_mean_ranked.csv
+  v3_outputs_ratio10_r3/graphs/v3_oof_precision_recall_curve.png
+  v3_outputs_ratio10_r3/graphs/v3_oof_confusion_matrix.png
+  v3_outputs_ratio10_r3/graphs/v3_feature_importance.png

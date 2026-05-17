@@ -49,6 +49,7 @@ DPI         = 150
 
 COLOR_BENIGN    = '#2E86AB'
 COLOR_MALIGNANT = '#E84855'
+COLOR_BOTH      = '#F4A261'
 
 CONTINUOUS_COLS = [
     'age_approx',

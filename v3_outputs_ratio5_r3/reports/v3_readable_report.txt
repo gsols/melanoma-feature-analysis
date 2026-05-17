@@ -1,0 +1,86 @@
+============================================================================
+ISIC 2024 — V3 Repeated Patient-Group CV Balanced Bagging
+============================================================================
+
+DATASET
+  Total rows         : 401,059
+  Benign             : 400,666
+  Malignant          : 393
+  Patient-group CV   : True
+
+MODEL
+  CV design          : 5 folds x 3 repeat(s)
+  Algorithm          : LightGBM balanced undersampling ensemble
+  Bags per fold      : 30
+  Benign ratio/bag   : 5:1
+  Estimators/bag     : 200
+  Original features  : 48 non-ID metadata + engineered features
+
+THRESHOLD POLICY
+  Thresholds for fold-level classification were selected from inner validation,
+  not from the outer held-out test fold.
+  Inner target recall: 0.80
+  Global report threshold: median inner threshold = 0.403797
+
+GLOBAL OUT-OF-FOLD METRICS
+  PR-AUC             : 0.060610
+  ROC-AUC            : 0.945986
+  F1                 : 0.018867
+  Precision          : 0.009540
+  Recall             : 0.849873
+  Confusion matrix   : TP=334, FP=34678, FN=59, TN=365988
+
+MEAN ± STD ACROSS OUTER FOLDS
+   metric         mean         std          min          max
+   pr_auc     0.069779    0.026782     0.038843     0.119335
+  roc_auc     0.945225    0.016087     0.917731     0.969719
+       f1     0.018501    0.006829     0.008061     0.033969
+precision     0.009370    0.003501     0.004047     0.017338
+   recall     0.838043    0.066362     0.730769     0.987952
+       tp    65.933333    6.408328    57.000000    82.000000
+       fp  8226.466667 4340.056712  3684.000000 20181.000000
+       fn    12.666667    5.122313     1.000000    21.000000
+       tn 71906.733333 4339.923213 59952.000000 76449.000000
+
+GLOBAL TOP-K OUT-OF-FOLD RECALL
+ top_k  malignant_caught  top_k_recall  top_k_precision
+   100                20      0.050891         0.200000
+   500                59      0.150127         0.118000
+  1000               103      0.262087         0.103000
+  5000               196      0.498728         0.039200
+  4010               181      0.460560         0.045137
+ 20052               300      0.763359         0.014961
+
+TOP 20 FEATURES
+ rank                     feature  importance  importance_std
+    1      clin_size_long_diam_mm  138.831111        8.835961
+    2                    tbp_lv_H  114.408889        6.249971
+    3                    tbp_lv_y  101.346667       13.018880
+    4               tbp_lv_deltaB   89.751111        6.387747
+    5          tbp_lv_deltaLBnorm   75.060000        7.517981
+    6              tbp_lv_stdLExt   73.702222        5.836169
+    7                    tbp_lv_z   71.873333        6.847131
+    8          tbp_lv_minorAxisMM   71.695556        6.563933
+    9      tbp_lv_nevi_confidence   71.166667        5.275565
+   10                    tbp_lv_B   69.393333        8.276436
+   11                  age_approx   67.644444       10.164416
+   12           color_contrast_3d   64.448889        7.178140
+   13               tbp_lv_deltaA   64.275556        4.072292
+   14                    tbp_lv_x   61.293333        6.043076
+   15          tbp_lv_perimeterMM   61.224444        4.837969
+   16                 tbp_lv_Aext   59.708889        5.441178
+   17          radial_color_ratio   57.575556        3.941144
+   18              tbp_lv_areaMM2   56.548889        4.092732
+   19 tbp_lv_radial_color_std_max   56.106667        6.490007
+   20                 tbp_lv_Hext   55.751111        5.481424
+
+OUTPUT FILES
+  v3_outputs_ratio5_r3/reports/v3_global_metrics.csv
+  v3_outputs_ratio5_r3/reports/v3_cv_metrics_by_fold.csv
+  v3_outputs_ratio5_r3/reports/v3_cv_metric_mean_std.csv
+  v3_outputs_ratio5_r3/reports/v3_top_k_global_oof.csv
+  v3_outputs_ratio5_r3/reports/v3_feature_importance.csv
+  v3_outputs_ratio5_r3/reports/v3_oof_predictions_mean_ranked.csv
+  v3_outputs_ratio5_r3/graphs/v3_oof_precision_recall_curve.png
+  v3_outputs_ratio5_r3/graphs/v3_oof_confusion_matrix.png
+  v3_outputs_ratio5_r3/graphs/v3_feature_importance.png

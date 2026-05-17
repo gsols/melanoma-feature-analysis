@@ -1,0 +1,86 @@
+============================================================================
+ISIC 2024 — V3 Repeated Patient-Group CV Balanced Bagging
+============================================================================
+
+DATASET
+  Total rows         : 401,059
+  Benign             : 400,666
+  Malignant          : 393
+  Patient-group CV   : True
+
+MODEL
+  CV design          : 5 folds x 3 repeat(s)
+  Algorithm          : LightGBM balanced undersampling ensemble
+  Bags per fold      : 30
+  Benign ratio/bag   : 20:1
+  Estimators/bag     : 200
+  Original features  : 48 non-ID metadata + engineered features
+
+THRESHOLD POLICY
+  Thresholds for fold-level classification were selected from inner validation,
+  not from the outer held-out test fold.
+  Inner target recall: 0.80
+  Global report threshold: median inner threshold = 0.259414
+
+GLOBAL OUT-OF-FOLD METRICS
+  PR-AUC             : 0.062399
+  ROC-AUC            : 0.944567
+  F1                 : 0.015980
+  Precision          : 0.008065
+  Recall             : 0.857506
+  Confusion matrix   : TP=337, FP=41448, FN=56, TN=359218
+
+MEAN ± STD ACROSS OUTER FOLDS
+   metric         mean         std          min          max
+   pr_auc     0.069334    0.021880     0.043016     0.113921
+  roc_auc     0.943637    0.015988     0.916982     0.968021
+       f1     0.016608    0.005801     0.007600     0.028075
+precision     0.008398    0.002967     0.003815     0.014303
+   recall     0.850879    0.060421     0.756410     0.987952
+       tp    66.933333    5.933761    59.000000    82.000000
+       fp  9173.066667 4537.590967  4066.000000 21413.000000
+       fn    11.666667    4.670067     1.000000    19.000000
+       tn 70960.133333 4537.488054 58720.000000 76067.000000
+
+GLOBAL TOP-K OUT-OF-FOLD RECALL
+ top_k  malignant_caught  top_k_recall  top_k_precision
+   100                21      0.053435         0.210000
+   500                60      0.152672         0.120000
+  1000               105      0.267176         0.105000
+  5000               194      0.493639         0.038800
+  4010               185      0.470738         0.046135
+ 20052               301      0.765903         0.015011
+
+TOP 20 FEATURES
+ rank                feature  importance  importance_std
+    1 clin_size_long_diam_mm  123.411111        7.366566
+    2               tbp_lv_H  115.520000        5.320174
+    3               tbp_lv_y  103.411111       13.273423
+    4          tbp_lv_deltaB   87.035556        4.564745
+    5             age_approx   80.737778       11.489511
+    6 tbp_lv_nevi_confidence   79.702222        5.084390
+    7               tbp_lv_B   77.473333        7.861804
+    8               tbp_lv_z   75.637778        7.312154
+    9         tbp_lv_stdLExt   74.117778        6.125148
+   10     tbp_lv_deltaLBnorm   72.535556        8.621443
+   11     tbp_lv_minorAxisMM   71.451111        6.775819
+   12     tbp_lv_perimeterMM   68.626667        6.932340
+   13          tbp_lv_deltaA   67.708889        4.244669
+   14      color_contrast_3d   67.122222        8.955256
+   15            tbp_lv_Aext   66.317778        6.663462
+   16            tbp_lv_Hext   66.020000        6.607605
+   17               tbp_lv_x   63.075556        8.360446
+   18     radial_color_ratio   60.206667        5.913842
+   19            tbp_lv_Lext   58.120000        5.610984
+   20            tbp_lv_Bext   56.093333        7.253321
+
+OUTPUT FILES
+  v3_outputs_ratio20_r3/reports/v3_global_metrics.csv
+  v3_outputs_ratio20_r3/reports/v3_cv_metrics_by_fold.csv
+  v3_outputs_ratio20_r3/reports/v3_cv_metric_mean_std.csv
+  v3_outputs_ratio20_r3/reports/v3_top_k_global_oof.csv
+  v3_outputs_ratio20_r3/reports/v3_feature_importance.csv
+  v3_outputs_ratio20_r3/reports/v3_oof_predictions_mean_ranked.csv
+  v3_outputs_ratio20_r3/graphs/v3_oof_precision_recall_curve.png
+  v3_outputs_ratio20_r3/graphs/v3_oof_confusion_matrix.png
+  v3_outputs_ratio20_r3/graphs/v3_feature_importance.png
