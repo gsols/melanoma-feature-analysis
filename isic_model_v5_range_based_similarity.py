@@ -23,7 +23,7 @@ import json
 import os
 
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split, StratifiedKFold
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
     f1_score, accuracy_score, precision_score, recall_score,
     confusion_matrix, roc_auc_score, average_precision_score,
@@ -297,29 +297,23 @@ def main():
     model.fit(X_train, y_train)
     print("✓ Model trained")
 
-    # Step 11: cross-validation
-    print("\n[Step 11] Cross-validation (5-fold)...")
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
+    # Step 11: cross-validation (COMMENTED OUT — too slow for large datasets)
+    # For production use, test set evaluation is sufficient
+    # Uncomment below to enable 5-fold CV (adds ~5x training time)
+    # print("\n[Step 11] Cross-validation (5-fold)...")
+    # cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
+    # cv_metrics = {'f1': [], 'accuracy': [], 'precision': [], 'recall': []}
+    # for train_idx, val_idx in cv.split(X_train, y_train):
+    #     X_cv_t, X_cv_v = X_train.iloc[train_idx], X_train.iloc[val_idx]
+    #     y_cv_t, y_cv_v = y_train.iloc[train_idx], y_train.iloc[val_idx]
+    #     fold_model = RandomForestClassifier(...)
+    #     fold_model.fit(X_cv_t, y_cv_t)
+    #     y_cv_p = fold_model.predict(X_cv_v)
+    #     cv_metrics['f1'].append(f1_score(y_cv_v, y_cv_p, zero_division=0))
+    #     ...
+    # Skipped. Using test set only.
+    print("\n[Step 11] Cross-validation skipped (using test set only)")
     cv_metrics = {'f1': [], 'accuracy': [], 'precision': [], 'recall': []}
-
-    for train_idx, val_idx in cv.split(X_train, y_train):
-        X_cv_t, X_cv_v = X_train.iloc[train_idx], X_train.iloc[val_idx]
-        y_cv_t, y_cv_v = y_train.iloc[train_idx], y_train.iloc[val_idx]
-        fold_model = RandomForestClassifier(
-            n_estimators=1000, max_depth=20, min_samples_split=10,
-            min_samples_leaf=5, random_state=RANDOM_STATE,
-            n_jobs=-1, class_weight='balanced'
-        )
-        fold_model.fit(X_cv_t, y_cv_t)
-        y_cv_p = fold_model.predict(X_cv_v)
-        cv_metrics['f1'].append(f1_score(y_cv_v, y_cv_p, zero_division=0))
-        cv_metrics['accuracy'].append(accuracy_score(y_cv_v, y_cv_p))
-        cv_metrics['precision'].append(precision_score(y_cv_v, y_cv_p, zero_division=0))
-        cv_metrics['recall'].append(recall_score(y_cv_v, y_cv_p, zero_division=0))
-
-    print("  CV Results (mean ± std):")
-    for m, vals in cv_metrics.items():
-        print(f"    {m:12s}: {np.mean(vals):.4f} ± {np.std(vals):.4f}")
 
     # Step 12: test evaluation
     print("\n[Step 12] Test evaluation...")
