@@ -37,7 +37,7 @@ OUTPUT_DIR  = 'ratio_data'
 
 # Ratios to generate (benign:malignant)
 # e.g., 20 means 20 benign for every 1 malignant
-RATIOS = [5, 10, 15, 20, 25, 30]
+RATIOS = [700, 1000]
 
 # Test set: extract 20% before resampling (to avoid data leakage)
 TEST_SIZE = 0.20

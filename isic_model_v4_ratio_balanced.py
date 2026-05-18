@@ -1,26 +1,20 @@
 # =============================================================================
-# ISIC 2024 — LightGBM Model with Ratio-Balanced Training Data (v4 FINAL)
+# ISIC 2024 — LightGBM Model with Benign:Malignant Ratio-Balanced Data
 # =============================================================================
-# PROPER WORKFLOW (prevents data leakage):
-#   1. Extract 20% test set FIRST (before any resampling)
-#   2. Test set = all benign (80,134 samples) — evaluates specificity
-#   3. Train set = all malignant (393) + 80% benign (320,532)
-#   4. SMOTE + undersampling applied ONLY to training data per ratio
+# Trains on pre-resampled ratio data using SMOTE + undersampling
+# Tests  on benign-only test set (never seen during training)
 #
-# Data preparation by isic_data_prep_ratio.py:
-#   - Original ~401k rows: 393 malignant, 400.7k benign
-#   - Test set (20% benign): 80,134 benign (0 malignant) — extracted FIRST
-#   - Train set: 393 malignant + 320,532 benign (80% of original benign)
-#   - For each ratio, resample training data with SMOTE + undersampling
-#   - Keep test set completely unchanged (real benign samples only)
+# This model trains on datasets pre-balanced to specific benign:malignant ratios
+# (5:1, 10:1, 15:1, 20:1, 25:1, or 30:1) created by isic_data_prep_ratio.py.
 #
 # Ratio balancing approach:
-#   - Malignant: 393 original → SMOTE synthetic oversampling to target ratio
+#   - Malignant: all 393 original → SMOTE synthetic oversampling
 #   - Benign:    random undersampling to achieve target ratio
-#   - Result: training sets with controlled class imbalance for comparison
+#   - Result: datasets with controlled class imbalance for comparison
 #
-# Evaluation tests SPECIFICITY: model evaluated on real benign cases only
-# (no false positives on negative samples)
+# The model outputs a malignancy risk probability for every test benign record.
+# This probability answers: "How closely does this benign lesion resemble
+# a confirmed malignant melanoma?"
 #
 # Output folder structure:
 #   v4_outputs_ratio_balanced_[ratio]/
@@ -73,11 +67,10 @@ from lightgbm import LGBMClassifier, early_stopping, log_evaluation
 # =============================================================================
 
 # Ratio to use (5, 10, 15, 20, 25, or 30)
-RATIO = int(os.environ.get('RATIO', '5'))
+RATIO = int(os.environ.get('RATIO', '700'))
 
-# NEW: Use stratified data with proper train/test split
-TRAIN_FILE = f'ratio_data/train_ratio_{RATIO}_1.csv'  # Resampled training data only
-TEST_FILE  = 'ratio_data/test_ratio_shared.csv'          # Shared test set (all benign - 80,134 samples)
+TRAIN_FILE = f'ratio_data/train_ratio_{RATIO}_1.csv'     # SMOTE + undersampled
+TEST_FILE  = 'ratio_data/test_ratio_shared.csv'             # same for all ratios
 
 DPI          = 150
 N_FOLDS      = 5
@@ -110,16 +103,6 @@ OUTPUT_PREFIX = f'v4_ratio_{RATIO}'
 os.makedirs(REPORT_DIR, exist_ok=True)
 os.makedirs(GRAPH_DIR,  exist_ok=True)
 
-
-# Helper function to safely unpack confusion matrix (handles 1x1 to 2x2 matrices)
-def safe_unpack_cm(cm):
-    cm_flat = cm.ravel()
-    tn = cm_flat[0] if len(cm_flat) > 0 else 0
-    fp = cm_flat[1] if len(cm_flat) > 1 else 0
-    fn = cm_flat[2] if len(cm_flat) > 2 else 0
-    tp = cm_flat[3] if len(cm_flat) > 3 else 0
-    return tn, fp, fn, tp
-
 sns.set_theme(style='whitegrid', font='Arial')
 plt.rcParams.update({
     'figure.facecolor': 'white',
@@ -147,8 +130,6 @@ df_test  = pd.read_csv(TEST_FILE)
 
 n_benign_train    = (df_train['malignant'] == 0).sum()
 n_malignant_train = (df_train['malignant'] == 1).sum()
-n_benign_test     = (df_test['malignant'] == 0).sum()
-n_malignant_test  = (df_test['malignant'] == 1).sum()
 n_test            = len(df_test)
 
 print(f"\n  TRAINING SET  ({TRAIN_FILE})")
@@ -157,14 +138,10 @@ print(f"    Malignant (1) : {n_malignant_train:,}  ← SMOTE synthetic oversampl
 print(f"    Benign    (0) : {n_benign_train:,}  ← randomly undersampled")
 print(f"    Imbalance     : {n_benign_train / n_malignant_train:.1f}:1  (target ratio)")
 
-print(f"\n  TEST SET (SHARED)  ({TEST_FILE})")
-print(f"    Total rows    : {n_test:,}  ← hold-out (original benign data, never resampled)")
-print(f"    Malignant (1) : {n_malignant_test:,}  ← none (evaluates specificity)")
-print(f"    Benign    (0) : {n_benign_test:,}  ← all benign samples")
-if n_malignant_test > 0:
-    print(f"    Test ratio    : {n_benign_test / n_malignant_test:.1f}:1")
-else:
-    print(f"    Test ratio    : all benign (no malignant samples)")
+print(f"\n  TEST SET  ({TEST_FILE})")
+print(f"    Total rows    : {n_test:,}  ← benign only, never seen by model")
+print(f"    Malignant (1) : 0  ← none by design")
+print(f"    Benign    (0) : {n_test:,}")
 
 
 # =============================================================================
@@ -283,27 +260,34 @@ effective_scale_pos_weight = scale_pos_weight * CLASS_WEIGHT_MULTIPLIER
 
 LGBM_PARAMS = {
     'n_estimators':      1000,
-    'learning_rate':     0.05,
-    'num_leaves':        31,
-    'max_depth':         -1,
-    'min_child_samples': 20,
+    'learning_rate':     0.03,
+    'num_leaves':        15,
+    'max_depth':         4,
+    'min_child_samples': 75,
     'subsample':         0.8,
     'subsample_freq':    1,
     'colsample_bytree':  0.8,
-    'reg_alpha':         0.1,
-    'reg_lambda':        0.1,
-    'scale_pos_weight':  effective_scale_pos_weight,
+    'reg_alpha':         0.5,
+    'reg_lambda':        2.0,
     'random_state':      RANDOM_STATE,
     'n_jobs':            -1,
     'verbose':           -1,
 }
+
+if CLASS_WEIGHT_MULTIPLIER > 0:
+    LGBM_PARAMS['scale_pos_weight'] = effective_scale_pos_weight
 
 print("\n" + "=" * 60)
 print("STEP 4 — Model configuration")
 print("=" * 60)
 print(f"  Algorithm          : LightGBM")
 print(f"  n_estimators       : {LGBM_PARAMS['n_estimators']}")
-print(f"  scale_pos_weight   : {effective_scale_pos_weight:.1f}  (handles imbalance)")
+print(f"  min_child_samples  : {LGBM_PARAMS['min_child_samples']}")
+if CLASS_WEIGHT_MULTIPLIER > 0:
+    print(f"  scale_pos_weight   : {effective_scale_pos_weight:.1f}  "
+          f"({CLASS_WEIGHT_MULTIPLIER:.2f}x base imbalance weight — ENABLED)")
+else:
+    print("  scale_pos_weight   : disabled")
 print(f"  Validation         : StratifiedKFold (k={N_FOLDS})")
 print(f"  Threshold strategy : Optimal via precision-recall curve")
 print(f"  Screening target   : Recall >= {TARGET_RECALL:.0%}")
@@ -389,7 +373,7 @@ for fold, (train_idx, val_idx) in enumerate(splits):
         'n_mal_val': int(n_mal_val), 'threshold': round(best_thr, 4),
         'f1': round(f1,4), 'accuracy': round(acc,4),
         'precision': round(prec,4), 'recall': round(rec,4),
-        'pr_auc': round(pr_auc,4), 'best_iter': model.n_estimators,
+        'pr_auc': round(pr_auc,4), 'best_iter': model.best_iteration_,
     })
 
     feature_imp_folds[fold] = model.feature_importances_
@@ -445,18 +429,18 @@ try:
 except Exception:
     cv_pr = float('nan')
 
-cm_cv    = confusion_matrix(y_train, cv_preds_final, labels=[0, 1])
-tn, fp, fn, tp = safe_unpack_cm(cm_cv)
+cm_cv    = confusion_matrix(y_train, cv_preds_final)
+tn, fp, fn, tp = cm_cv.ravel()
 
-cm_recall = confusion_matrix(y_train, cv_preds_recall, labels=[0, 1])
-recall_tn, recall_fp, recall_fn, recall_tp = safe_unpack_cm(cm_recall)
+cm_recall = confusion_matrix(y_train, cv_preds_recall)
+recall_tn, recall_fp, recall_fn, recall_tp = cm_recall.ravel()
 
 target_rows = []
 for target in [0.30, 0.50, 0.70, 0.90]:
     target_thr = threshold_for_target_recall(y_train, cv_probs, target)
     target_preds = (cv_probs >= target_thr).astype(int)
-    target_cm = confusion_matrix(y_train, target_preds, labels=[0, 1])
-    target_tn, target_fp, target_fn, target_tp = safe_unpack_cm(target_cm)
+    target_cm = confusion_matrix(y_train, target_preds)
+    target_tn, target_fp, target_fn, target_tp = target_cm.ravel()
     target_rows.append({
         'target_recall': target,
         'threshold': target_thr,
@@ -517,14 +501,13 @@ print(f"\n  Saved: {REPORT_DIR}/{OUTPUT_PREFIX}_feature_importance.csv")
 
 
 # =============================================================================
-# STEP 7 — EVALUATE ON TEST SET (unseen benign + malignant records)
+# STEP 7 — PREDICT ON TEST SET (unseen benign records)
 # =============================================================================
 
 print("\n" + "=" * 60)
-print("STEP 7 — Evaluating on Test Set (Both Classes)")
+print("STEP 7 — Predicting Malignancy Risk on Test Set")
 print("=" * 60)
-print(f"  Test set: {n_test:,} records ({n_malignant_test} malignant + {n_benign_test} benign)")
-print(f"  All test data is REAL, UNSEEN (never seen during training)")
+print(f"  Test set: {n_test:,} benign records that were NEVER seen during training")
 print(f"  Using: best model from fold {df_folds['f1'].idxmax()+1} "
       f"(highest CV F1 = {df_folds['f1'].max():.4f})\n")
 
@@ -532,47 +515,15 @@ best_fold_idx = df_folds['f1'].idxmax()
 best_model    = best_models[best_fold_idx]
 
 test_probs = best_model.predict_proba(X_test.values)[:, 1]
-test_preds = (test_probs >= overall_threshold).astype(int)
-
-# Calculate test set metrics
-y_test = df_test['malignant'].values
-
-test_f1   = f1_score(y_test, test_preds, zero_division=0)
-test_acc  = accuracy_score(y_test, test_preds)
-test_prec = precision_score(y_test, test_preds, zero_division=0)
-test_rec  = recall_score(y_test, test_preds, zero_division=0)
-try:
-    test_pr_auc = average_precision_score(y_test, test_probs)
-except Exception:
-    test_pr_auc = float('nan')
-
-cm_test = confusion_matrix(y_test, test_preds, labels=[0, 1])
-test_tn, test_fp, test_fn, test_tp = safe_unpack_cm(cm_test)
-
-print(f"  TEST SET METRICS (using optimal threshold={overall_threshold:.4f}):")
-print(f"    F1        : {test_f1:.4f}")
-print(f"    Accuracy  : {test_acc:.4f}")
-print(f"    Precision : {test_prec:.4f}")
-print(f"    Recall    : {test_rec:.4f}  (malignant detection rate)")
-print(f"    PR-AUC    : {test_pr_auc:.4f}")
-print(f"    Confusion matrix: TP={test_tp}, FP={test_fp}, FN={test_fn}, TN={test_tn}")
-if n_malignant_test > 0:
-    print(f"    Malignant caught: {test_tp}/{n_malignant_test} ({test_tp/n_malignant_test*100:.1f}%)")
-print(f"    False positives: {test_fp}/{n_benign_test} ({test_fp/n_benign_test*100:.1f}%)")
 
 df_test_out = pd.read_csv(TEST_FILE)
 df_test_out['lgbm_malignancy_prob'] = test_probs
-df_test_out['lgbm_pred'] = test_preds
 df_test_out['screening_flag'] = df_test_out['lgbm_malignancy_prob'] >= recall_threshold
 
-# Risk tier labels - ensure monotonically increasing bins
+# Risk tier labels
 risk_cut_1 = max(float(recall_threshold), 1e-6)
-risk_cut_2 = max(float(overall_threshold), risk_cut_1 + 1e-6)
-risk_cut_3 = max(risk_cut_2 + 1e-6, min(risk_cut_2 * 2, 0.99))
-# Ensure all cuts are strictly increasing and within [0, 1]
-risk_cut_1 = min(risk_cut_1, 0.33)
-risk_cut_2 = max(risk_cut_1 + 1e-6, min(risk_cut_2, 0.66))
-risk_cut_3 = max(risk_cut_2 + 1e-6, min(risk_cut_3, 0.99))
+risk_cut_2 = max(float(overall_threshold), risk_cut_1 * 1.01)
+risk_cut_3 = min(max(risk_cut_2 * 2, risk_cut_2 + 1e-6), 1.0)
 risk_bins = [0.00, risk_cut_1, risk_cut_2, risk_cut_3, 1.01]
 risk_labels = ['Low', 'Elevated', 'High', 'Very High']
 
@@ -588,26 +539,13 @@ df_test_out = df_test_out.reset_index(drop=True)
 df_test_out.index += 1
 df_test_out.index.name = 'risk_rank'
 
-print(f"\n  Probability statistics for all test records:")
-benign_probs = test_probs[y_test == 0]
-malignant_probs = test_probs[y_test == 1]
-print(f"    All records:")
-print(f"      Mean   : {test_probs.mean():.4f}")
-print(f"      Median : {np.median(test_probs):.4f}")
-print(f"      Max    : {test_probs.max():.4f}")
-print(f"    Benign records:")
-print(f"      Mean   : {benign_probs.mean():.4f}")
-print(f"      Median : {np.median(benign_probs):.4f}")
-print(f"      Max    : {benign_probs.max():.4f}")
-if len(malignant_probs) > 0:
-    print(f"    Malignant records:")
-    print(f"      Mean   : {malignant_probs.mean():.4f}")
-    print(f"      Median : {np.median(malignant_probs):.4f}")
-    print(f"      Max    : {malignant_probs.max():.4f}")
-else:
-    print(f"    Malignant records: N/A (no malignant samples in test set)")
+print(f"  Probability stats for test benign records:")
+print(f"    Mean   : {test_probs.mean():.4f}")
+print(f"    Median : {np.median(test_probs):.4f}")
+print(f"    Max    : {test_probs.max():.4f}")
+print(f"    Min    : {test_probs.min():.4f}")
 
-print(f"\n  Risk tier distribution (on full test set):")
+print(f"\n  Risk tier distribution:")
 tier_counts = df_test_out['risk_tier'].value_counts().sort_index()
 for tier, count in tier_counts.items():
     pct = count / len(df_test_out) * 100
@@ -616,23 +554,21 @@ for tier, count in tier_counts.items():
 
 screening_count = int(df_test_out['screening_flag'].sum())
 screening_pct = screening_count / len(df_test_out) * 100
-screening_mal = int(df_test_out[df_test_out['malignant']==1]['screening_flag'].sum())
-print(f"\n  Screening mode flags (threshold={recall_threshold:.4f}):")
-print(f"    Total flagged  : {screening_count:,}/{len(df_test_out):,} ({screening_pct:.1f}%)")
-if n_malignant_test > 0:
-    print(f"    Malignant flagged: {screening_mal:,}/{n_malignant_test:,} ({screening_mal/n_malignant_test*100:.1f}%)")
-else:
-    print(f"    Malignant flagged: N/A (no malignant samples in test set)")
+print(f"\n  Screening mode flags:")
+print(f"    Threshold      : {recall_threshold:.4f}")
+print(f"    Test flagged   : {screening_count:,}/{len(df_test_out):,} ({screening_pct:.1f}%)")
 
-print(f"\n  Top 20 highest-risk records (mixed benign + malignant):")
-display_cols = ['malignant', 'lgbm_malignancy_prob', 'lgbm_pred', 'screening_flag',
-                'age_approx', 'anatom_site_general', 'clin_size_long_diam_mm',
-                'tbp_lv_nevi_confidence']
+print(f"\n  Top 20 highest-risk benign records:")
+display_cols = ['lgbm_malignancy_prob', 'risk_tier', 'screening_flag', 'age_approx',
+                'anatom_site_general', 'clin_size_long_diam_mm',
+                'tbp_lv_nevi_confidence', 'tbp_lv_norm_border']
 display_cols = [c for c in display_cols if c in df_test_out.columns]
 print(df_test_out[display_cols].head(20).to_string())
 
-df_test_out.to_csv(f'{REPORT_DIR}/{OUTPUT_PREFIX}_test_predictions.csv')
-print(f"\n  Saved: {REPORT_DIR}/{OUTPUT_PREFIX}_test_predictions.csv")
+df_test_out.to_csv(f'{REPORT_DIR}/{OUTPUT_PREFIX}_benign_risk_predictions.csv')
+print(f"\n  Saved: {REPORT_DIR}/{OUTPUT_PREFIX}_benign_risk_predictions.csv")
+print(f"  This is the FINAL ANSWER — {len(df_test_out):,} unseen benign records")
+print(f"  ranked by how closely they resemble malignant melanoma.")
 
 
 # =============================================================================
@@ -661,7 +597,7 @@ disp = ConfusionMatrixDisplay(confusion_matrix=cm_cv,
 disp.plot(ax=ax, colorbar=False, cmap='Blues', values_format='d')
 ax.set_title(f'Confusion Matrix — Out-of-Fold ({RATIO}:1 Ratio)\n(LightGBM)', fontweight='bold')
 plt.tight_layout()
-save_graph(fig, f'v4_oof_confusion_matrix.png')
+save_graph(fig, 'v4_oof_confusion_matrix.png')
 
 
 # ── Graph 2: PR curve ───────────────────────────────────────────────────────
@@ -732,8 +668,8 @@ report_lines = [
     f"  Algorithm          : LightGBM",
     f"  CV design          : StratifiedKFold (k={N_FOLDS})",
     f"  n_estimators       : {LGBM_PARAMS['n_estimators']}",
-    f"  scale_pos_weight   : {effective_scale_pos_weight:.1f}",
-    f"  Parallelization    : {LGBM_PARAMS['n_jobs']} jobs",
+    f"  min_child_samples  : {LGBM_PARAMS['min_child_samples']}",
+    f"  scale_pos_weight   : {effective_scale_pos_weight:.2f}  (imbalance weight)",
     f"  Interaction features : {len(interaction_features)} engineering features",
     f"  Total features     : {len(FEATURE_NAMES)}",
     "",
@@ -758,22 +694,12 @@ report_lines = [
     f"  {'recall':<12} {means['recall']:>10.6f} {stds['recall']:>10.6f}",
     f"  {'pr_auc':<12} {means['pr_auc']:>10.6f} {stds['pr_auc']:>10.6f}",
     "",
-    "TEST SET EVALUATION (Specificity on Unseen Benign Records)",
-    f"  Test set size      : {n_test:,}  ({n_malignant_test} malignant, {n_benign_test} benign)",
-    f"  Test F1            : {test_f1:.6f}",
-    f"  Test Accuracy      : {test_acc:.6f}",
-    f"  Test Precision     : {test_prec:.6f}",
-    f"  Test Recall        : {test_rec:.6f}  (sensitivity on available malignant)",
-    f"  Test PR-AUC        : {test_pr_auc:.6f}",
-    f"  Confusion matrix   : TP={test_tp}, FP={test_fp}, FN={test_fn}, TN={test_tn}",
-    (f"  Malignant caught   : {test_tp}/{n_malignant_test}  ({test_tp/n_malignant_test*100:.1f}%)" if n_malignant_test > 0 else f"  Malignant caught   : N/A (no malignant in test)"),
-    f"  False positives    : {test_fp}/{n_benign_test}  ({test_fp/n_benign_test*100:.1f}%)",
-    "",
-    "TEST SET PROBABILITY STATISTICS",
-    f"  Prob mean (all)    : {test_probs.mean():.6f}",
-    f"  Prob mean (benign) : {benign_probs.mean():.6f}",
-    (f"  Prob mean (malig)  : {malignant_probs.mean():.6f}" if len(malignant_probs) > 0 else f"  Prob mean (malig)  : N/A"),
+    "TEST SET PREDICTIONS (Unseen Benign Records)",
+    f"  Records scored     : {n_test:,}",
+    f"  Prob mean          : {test_probs.mean():.6f}",
+    f"  Prob median        : {np.median(test_probs):.6f}",
     f"  Prob max           : {test_probs.max():.6f}",
+    f"  Screening flagged  : {screening_count:,}  ({screening_pct:.1f}%)",
     "",
     "TOP 20 FEATURES",
     f"  {'rank':<6} {'feature':<35} {'importance':>12}",
@@ -792,7 +718,7 @@ report_lines += [
     f"  {OUTPUT_FOLDER}/reports/v4_global_metrics.json",
     f"  {OUTPUT_FOLDER}/reports/{OUTPUT_PREFIX}_fold_metrics.csv",
     f"  {OUTPUT_FOLDER}/reports/{OUTPUT_PREFIX}_feature_importance.csv",
-    f"  {OUTPUT_FOLDER}/reports/{OUTPUT_PREFIX}_test_predictions.csv",
+    f"  {OUTPUT_FOLDER}/reports/{OUTPUT_PREFIX}_benign_risk_predictions.csv",
     f"  {OUTPUT_FOLDER}/graphs/v4_oof_confusion_matrix.png",
     f"  {OUTPUT_FOLDER}/graphs/v4_oof_precision_recall_curve.png",
     f"  {OUTPUT_FOLDER}/graphs/v4_feature_importance.png",
@@ -885,9 +811,9 @@ print(f"    CV Recall            : {model_record['cv_recall']}")
 print(f"    CV Precision         : {model_record['cv_precision']}")
 print(f"    Screening Recall     : {model_record['screening_recall']}")
 print(f"    Screening Precision  : {model_record['screening_precision']}")
+print(f"    min_child_samples    : {model_record['min_child_samples']}")
 print(f"    scale_pos_weight     : {model_record['scale_pos_weight']:.1f}")
-if 'num_interaction_features' in model_record:
-    print(f"    Interaction features : {model_record['num_interaction_features']}")
+print(f"    Interaction features : {model_record['num_interaction_features']}")
 
 
 # =============================================================================

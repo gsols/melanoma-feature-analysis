@@ -1,0 +1,37 @@
+Ratio 700:1 (benign:malignant) Resampling Summary
+============================================================
+
+Data Split (from ~400k original data) - AVOIDS DATA LEAKAGE
+  Full data            : ~400k rows
+  Test set (20% benign): 80,134 rows (extracted FIRST)
+  Train set            : 320,925 rows (remaining data)
+    - All malignant samples (for training)
+    - 80% of benign samples
+
+Original Train Data (before resampling)
+  Total rows   : 320,925
+  Malignant    : 393 (all samples)
+  Benign       : 320,532 (80% of benign)
+  Ratio        : 815.60:1
+
+Resampled Train Data (ratio 700:1)
+  Target total : 300,000 rows
+  Total rows   : 300,000
+  Malignant    : 427 (SMOTE synthetic oversampled)
+  Benign       : 299,573 (undersampled from 320,532)
+  Ratio        : 701.58:1
+
+Test Data (unchanged, shared across all ratios)
+  Total rows   : 80,134
+  Malignant    : 0 (none - all benign)
+  Benign       : 80,134 (20% of original benign)
+  Purpose      : Evaluate model specificity (no false positives)
+
+Resampling Method
+  Oversampling : SMOTE (synthetic minority class generation)
+  Undersampling: RandomUnderSampler (majority class reduction)
+  Random state : 42
+
+Data Leakage Prevention
+  Test set extracted BEFORE resampling to prevent leakage.
+  Only training data undergoes SMOTE/undersampling.
