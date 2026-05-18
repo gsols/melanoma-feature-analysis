@@ -1,0 +1,54 @@
+================================================================================
+ISIC 2024 — V5 Naive Bayes Comparison: Range-Based Malignant Similarity
+================================================================================
+
+CONCEPT
+  Trained on benign records only. Target engineered from similarity to the
+  malignant feature profile (dominant ranges). Compares two Naive Bayes
+  variants:
+    GaussianNB     — raw continuous features
+    CategoricalNB  — range labels (matches similarity logic)
+
+DATASET
+  Total benign      : 400,666
+  Train (80%)       : 320,532
+  Test  (20%)       : 80,134
+  Near-malignant    : 348,211 (86.91%)
+  Threshold         : 0.6
+
+TEST SET METRICS
+  Metric          GaussianNB   CategoricalNB
+  ------------  ------------  --------------
+  f1                  0.9459          0.9533
+  accuracy            0.9090          0.9217
+  precision           0.9787          0.9903
+  recall              0.9153          0.9189
+  roc_auc             0.9457          0.9777
+  pr_auc              0.9885          0.9960
+
+CONFUSION MATRICES (Test Set)
+  GaussianNB    : TP=63,742, FP=1,389, FN=5,901, TN=9,102
+  CategoricalNB : TP=63,995, FP=626, FN=5,648, TN=9,865
+
+DOMINANT MALIGNANT RANGES (similarity reference)
+  age_approx                       → Senior
+  clin_size_long_diam_mm           → Very Small
+  tbp_lv_area_perim_ratio          → Very High
+  tbp_lv_norm_border               → High
+  tbp_lv_symm_2axis                → Asymmetric
+  tbp_lv_eccentricity              → High
+  tbp_lv_color_std_mean            → Low
+  tbp_lv_norm_color                → Very High
+  tbp_lv_deltaLBnorm               → Low
+  tbp_lv_radial_color_std_max      → Low
+  tbp_lv_nevi_confidence           → High
+  color_contrast_3d                → Moderate
+  elongation                       → Elongated
+  nevi_color_tension               → Very High
+  log_area                         → Very Small
+  stdL_ratio                       → Very High
+  compactness                      → Moderate
+  chroma_contrast                  → Low
+  radial_color_ratio               → High
+
+================================================================================
