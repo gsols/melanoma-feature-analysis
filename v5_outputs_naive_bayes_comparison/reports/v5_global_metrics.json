@@ -1,25 +1,103 @@
 {
   "gaussian_nb": {
     "model": "GaussianNB",
-    "f1": 0.9459094484099307,
-    "accuracy": 0.9090273791399406,
-    "precision": 0.9786737498272712,
-    "recall": 0.9152678661171977,
-    "roc_auc": 0.9456672902056626,
-    "pr_auc": 0.9885493413193641
+    "f1": 0.8140027452798458,
+    "accuracy": 0.744665185813762,
+    "precision": 0.7121747152764523,
+    "recall": 0.9498080145951335,
+    "roc_auc": 0.8869313643582277,
+    "pr_auc": 0.9227646176001677
   },
   "categorical_nb": {
     "model": "CategoricalNB",
-    "f1": 0.953271167252577,
-    "accuracy": 0.9217061422117953,
-    "precision": 0.9903127466303524,
-    "recall": 0.918900679178094,
-    "roc_auc": 0.9776549167999468,
-    "pr_auc": 0.9959605266653591
+    "f1": 0.8609972748642633,
+    "accuracy": 0.8332293408540694,
+    "precision": 0.8446217578515601,
+    "recall": 0.8780203228749018,
+    "roc_auc": 0.9086720189558719,
+    "pr_auc": 0.9267943651361596
   },
   "similarity_threshold": 0.6,
   "train_size": 320532,
   "test_size": 80134,
-  "benign_near_malignant_count": 348211,
-  "benign_near_malignant_pct": 86.90804809991364
+  "benign_near_malignant_count": 235691,
+  "benign_near_malignant_pct": 58.82480669684975,
+  "malignant_iqr_windows": {
+    "age_approx": {
+      "q1": 55.0,
+      "q3": 70.0
+    },
+    "clin_size_long_diam_mm": {
+      "q1": 2.4,
+      "q3": 7.87
+    },
+    "tbp_lv_area_perim_ratio": {
+      "q1": 15.3038,
+      "q3": 24.63749
+    },
+    "tbp_lv_norm_border": {
+      "q1": 2.4041176,
+      "q3": 4.9244976
+    },
+    "tbp_lv_symm_2axis": {
+      "q1": 0.20903955,
+      "q3": 0.4
+    },
+    "tbp_lv_eccentricity": {
+      "q1": 0.6168038,
+      "q3": 0.8363595
+    },
+    "tbp_lv_color_std_mean": {
+      "q1": 0.28949025,
+      "q3": 2.505743
+    },
+    "tbp_lv_norm_color": {
+      "q1": 0.8803606,
+      "q3": 7.5508447
+    },
+    "tbp_lv_deltaLBnorm": {
+      "q1": 5.621653,
+      "q3": 10.22556
+    },
+    "tbp_lv_radial_color_std_max": {
+      "q1": 0.2579156,
+      "q3": 2.4141898
+    },
+    "tbp_lv_nevi_confidence": {
+      "q1": 0.0001866102,
+      "q3": 24.53914
+    },
+    "color_contrast_3d": {
+      "q1": 8.636997,
+      "q3": 14.61747
+    },
+    "elongation": {
+      "q1": 1.2665128,
+      "q3": 1.7700145
+    },
+    "nevi_color_tension": {
+      "q1": -0.8375684,
+      "q3": 22.824041
+    },
+    "log_area": {
+      "q1": 1.348675,
+      "q3": 3.3934045
+    },
+    "stdL_ratio": {
+      "q1": 0.5452666,
+      "q3": 1.9027905
+    },
+    "compactness": {
+      "q1": 0.5100509,
+      "q3": 0.8211279
+    },
+    "chroma_contrast": {
+      "q1": 0.6661892,
+      "q3": 4.4931335
+    },
+    "radial_color_ratio": {
+      "q1": 0.52183944,
+      "q3": 1.106148
+    }
+  }
 }

@@ -75,13 +75,14 @@ def assign_range_label(value, ranges):
     return ranges[-1][2]
 
 
-def compute_similarity_score(row, dominant_ranges):
+def compute_similarity_score(row, malignant_iqr):
+    """Score = fraction of features where benign value falls within malignant [Q1, Q3]."""
     matches, total = 0, 0
-    for feature, dominant_range in dominant_ranges.items():
-        range_col = f'{feature}_range'
-        if pd.notna(row[range_col]):
+    for feature, (q1, q3) in malignant_iqr.items():
+        val = row[feature]
+        if pd.notna(val):
             total += 1
-            if row[range_col] == dominant_range:
+            if q1 <= val <= q3:
                 matches += 1
     return matches / total if total > 0 else 0.0
 
@@ -146,21 +147,21 @@ def main():
         plt.close()
     print(f"✓ {len(FEATURE_RANGES)*2} feature graphs saved")
 
-    # Step 6: dominant malignant ranges
-    print("\n[Step 6] Identifying dominant malignant ranges...")
-    dominant_ranges = {}
+    # Step 6: compute IQR-based malignant reference window per feature
+    # Q1–Q3 of malignant values is used (resistant to outliers in small n=393 group)
+    # FEATURE_RANGES is NOT used here — only for benign graphing/labeling above
+    print("\n[Step 6] Computing IQR malignant reference window (Q1–Q3)...")
+    malignant_iqr = {}
     for feature in FEATURE_RANGES:
-        range_col = f'{feature}_range'
-        mal_counts = df_malignant[range_col].value_counts()
-        if len(mal_counts) > 0:
-            dominant_ranges[feature] = mal_counts.idxmax()
-    for f, d in dominant_ranges.items():
-        print(f"  {f:32s} → {d}")
+        q1 = df_malignant[feature].quantile(0.25)
+        q3 = df_malignant[feature].quantile(0.75)
+        malignant_iqr[feature] = (q1, q3)
+        print(f"  {feature:32s} → [{q1:.4f}, {q3:.4f}]")
 
-    # Step 7: similarity scores
-    print("\n[Step 7] Computing similarity scores...")
+    # Step 7: similarity scores — benign value falls within malignant [Q1, Q3]
+    print("\n[Step 7] Computing IQR-based similarity scores...")
     df_benign['similarity_score'] = df_benign.apply(
-        lambda r: compute_similarity_score(r, dominant_ranges), axis=1
+        lambda r: compute_similarity_score(r, malignant_iqr), axis=1
     )
     print(f"  Mean: {df_benign['similarity_score'].mean():.4f}, "
           f"Range: [{df_benign['similarity_score'].min():.4f}, "
@@ -245,7 +246,7 @@ def main():
     # Save both models
     joblib.dump({
         'model': gnb, 'features': model_features,
-        'dominant_ranges': dominant_ranges,
+        'malignant_iqr': malignant_iqr,
         'feature_ranges': FEATURE_RANGES,
         'similarity_threshold': SIMILARITY_THRESHOLD,
         'model_type': 'GaussianNB',
@@ -254,7 +255,7 @@ def main():
     joblib.dump({
         'model': cnb, 'features': range_cols,
         'encoder': encoder,
-        'dominant_ranges': dominant_ranges,
+        'malignant_iqr': malignant_iqr,
         'feature_ranges': FEATURE_RANGES,
         'similarity_threshold': SIMILARITY_THRESHOLD,
         'model_type': 'CategoricalNB',
@@ -277,19 +278,23 @@ def main():
             'train_size': len(Xc_tr), 'test_size': len(Xc_te),
             'benign_near_malignant_count': int(near_mal_count),
             'benign_near_malignant_pct': float(100*near_mal_count/len(df_benign)),
+            'malignant_iqr_windows': {f: {'q1': q1, 'q3': q3}
+                                      for f, (q1, q3) in malignant_iqr.items()},
         }, f, indent=2, default=float)
 
     # Readable report
     report = f"""================================================================================
-ISIC 2024 — V5 Naive Bayes Comparison: Range-Based Malignant Similarity
+ISIC 2024 — V5 Naive Bayes Comparison: IQR-Based Malignant Similarity
 ================================================================================
 
 CONCEPT
-  Trained on benign records only. Target engineered from similarity to the
-  malignant feature profile (dominant ranges). Compares two Naive Bayes
-  variants:
+  Trained on benign records only. Target engineered from IQR similarity to the
+  malignant feature profile. A benign record scores 1 for a feature if its
+  value falls within [Q1, Q3] of that feature's malignant distribution.
+  FEATURE_RANGES used only for benign graphing/labeling — NOT for similarity.
+  Compares two Naive Bayes variants:
     GaussianNB     — raw continuous features
-    CategoricalNB  — range labels (matches similarity logic)
+    CategoricalNB  — range labels (benign binning)
 
 DATASET
   Total benign      : {len(df_benign):,}
@@ -312,10 +317,12 @@ CONFUSION MATRICES (Test Set)
   GaussianNB    : TP={gtp:,}, FP={gfp:,}, FN={gfn:,}, TN={gtn:,}
   CategoricalNB : TP={ctp:,}, FP={cfp:,}, FN={cfn:,}, TN={ctn:,}
 
-DOMINANT MALIGNANT RANGES (similarity reference)
+MALIGNANT IQR REFERENCE WINDOWS (Q1–Q3 of 393 malignant records)
+  {'Feature':32s}   Q1          Q3
+  {'-'*60}
 """
-    for f, d in dominant_ranges.items():
-        report += f"  {f:32s} → {d}\n"
+    for f, (q1, q3) in malignant_iqr.items():
+        report += f"  {f:32s}   {q1:>10.4f}  {q3:>10.4f}\n"
 
     report += "\n" + "=" * 80 + "\n"
     with open(f'{OUTPUT_REPORTS}/v5_readable_report.txt', 'w') as f:
