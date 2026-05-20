@@ -1,0 +1,87 @@
+============================================================================
+ISIC 2024 — V3 Repeated Patient-Group CV Balanced Bagging
+============================================================================
+
+DATASET
+  Total rows         : 401,059
+  Benign             : 400,666
+  Malignant          : 393
+  Patient-group CV   : True
+
+MODEL
+  CV design          : 5 folds x 1 repeat(s)
+  Algorithm          : LightGBM balanced undersampling ensemble
+  Bags per fold      : 30
+  Benign ratio/bag   : 10:1
+  Estimators/bag     : 200
+  Original features  : 48 non-ID metadata + engineered features
+
+THRESHOLD POLICY
+  Thresholds for fold-level classification were selected from inner validation,
+  not from the outer held-out test fold.
+  Inner target recall: 0.80
+  Global report threshold: median inner threshold = 0.334530
+
+GLOBAL OUT-OF-FOLD METRICS
+  PR-AUC             : 0.058616
+  ROC-AUC            : 0.946492
+  F1                 : 0.017918
+  Precision          : 0.009055
+  Recall             : 0.842239
+  Confusion matrix   : TP=331, FP=36223, FN=62, TN=364443
+
+MEAN ± STD ACROSS OUTER FOLDS
+   metric         mean         std          min          max
+   pr_auc     0.069607    0.033635     0.037744     0.124649
+  roc_auc     0.947245    0.013619     0.930212     0.962858
+       f1     0.018956    0.007423     0.008903     0.029542
+precision     0.009606    0.003808     0.004473     0.015060
+   recall     0.831890    0.067135     0.769231     0.935065
+       tp    65.400000    5.813777    60.000000    72.000000
+       fp  8068.000000 4630.399065  3924.000000 16026.000000
+       fn    13.200000    5.167204     5.000000    18.000000
+       tn 72065.200000 4629.969406 64108.000000 76209.000000
+
+GLOBAL TOP-K OUT-OF-FOLD RECALL
+ top_k  malignant_caught  top_k_recall  top_k_precision
+   100                19      0.048346         0.190000
+   500                57      0.145038         0.114000
+  1000                98      0.249364         0.098000
+  5000               202      0.513995         0.040400
+  4010               189      0.480916         0.047132
+ 20052               295      0.750636         0.014712
+
+TOP 20 FEATURES
+ rank                     feature  importance  importance_std
+    1      clin_size_long_diam_mm  135.680000        8.846989
+    2                    tbp_lv_H  115.280000        4.714729
+    3                    tbp_lv_y  102.680000       10.707075
+    4               tbp_lv_deltaB   88.286667        4.537229
+    5          tbp_lv_deltaLBnorm   79.113333        6.418965
+    6                  age_approx   75.793333       12.414606
+    7      tbp_lv_nevi_confidence   74.900000        7.354326
+    8                    tbp_lv_B   74.833333       13.480480
+    9                    tbp_lv_z   72.420000       11.722144
+   10              tbp_lv_stdLExt   71.353333        6.362110
+   11           color_contrast_3d   67.913333        8.243839
+   12               tbp_lv_deltaA   67.500000        5.445079
+   13          tbp_lv_minorAxisMM   66.793333        7.208382
+   14                    tbp_lv_x   64.653333        6.718821
+   15                 tbp_lv_Aext   63.673333        9.006707
+   16          tbp_lv_perimeterMM   62.640000        4.458849
+   17                 tbp_lv_Hext   62.166667        4.403092
+   18          radial_color_ratio   59.746667        5.789963
+   19 tbp_lv_radial_color_std_max   55.726667        8.508081
+   20              tbp_lv_areaMM2   55.206667        3.099588
+
+OUTPUT FILES
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/models/model_v3/processed_data/v3_processed.csv
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v3_outputs/v3_outputs_ratio10_1/reports/v3_global_metrics.csv
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v3_outputs/v3_outputs_ratio10_1/reports/v3_cv_metrics_by_fold.csv
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v3_outputs/v3_outputs_ratio10_1/reports/v3_cv_metric_mean_std.csv
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v3_outputs/v3_outputs_ratio10_1/reports/v3_top_k_global_oof.csv
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v3_outputs/v3_outputs_ratio10_1/reports/v3_feature_importance.csv
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v3_outputs/v3_outputs_ratio10_1/reports/v3_oof_predictions_mean_ranked.csv
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v3_outputs/v3_outputs_ratio10_1/graphs/v3_oof_precision_recall_curve.png
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v3_outputs/v3_outputs_ratio10_1/graphs/v3_oof_confusion_matrix.png
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v3_outputs/v3_outputs_ratio10_1/graphs/v3_feature_importance.png

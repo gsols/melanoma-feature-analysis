@@ -57,11 +57,6 @@ _HERE = Path(__file__).resolve().parent
 DATA_DIR = Path(os.getenv("DATA_DIR", str((_HERE / "../../datasets").resolve())))
 DATASET_FILE = DATA_DIR / "datasetv3_raw_metadata_labels_merged.csv"
 
-OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str((_HERE / "../../outputs/v2_outputs").resolve())))
-REPORT_DIR = OUTPUT_DIR / "reports"
-GRAPH_DIR = OUTPUT_DIR / "graphs"
-PROCESSED_DATA_DIR = _HERE / "processed_data"
-
 RANDOM_STATE = int(os.getenv("RANDOM_STATE", "42"))
 TEST_SIZE = float(os.getenv("TEST_SIZE", "0.20"))
 
@@ -69,6 +64,11 @@ TEST_SIZE = float(os.getenv("TEST_SIZE", "0.20"))
 N_BAGS = int(os.getenv("N_BAGS", "30"))
 BENIGN_TO_MALIGNANT_RATIO = int(os.getenv("BENIGN_RATIO", "5"))  # try 5, 10, 20
 N_ESTIMATORS = int(os.getenv("N_ESTIMATORS", "200"))
+
+OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str((_HERE / f"../../outputs/v2_outputs/v2_outputs_ratio{BENIGN_TO_MALIGNANT_RATIO}_1").resolve())))
+REPORT_DIR = OUTPUT_DIR / "reports"
+GRAPH_DIR = OUTPUT_DIR / "graphs"
+PROCESSED_DATA_DIR = _HERE / "processed_data"
 
 # LightGBM settings tuned for small balanced bags, not the full 400k:393 ratio.
 LGBM_PARAMS = {

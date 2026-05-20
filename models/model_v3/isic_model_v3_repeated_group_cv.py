@@ -62,12 +62,7 @@ _HERE = Path(__file__).resolve().parent
 # =============================================================================
 
 DATA_DIR = Path(os.getenv("DATA_DIR", str((_HERE / "../../datasets").resolve())))
-METADATA_FILE = DATA_DIR / "metadata.csv"
-LABELS_FILE = DATA_DIR / "labels.csv"
-
-OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str((_HERE / "../../outputs/v3_outputs").resolve())))
-REPORT_DIR = OUTPUT_DIR / "reports"
-GRAPH_DIR = OUTPUT_DIR / "graphs"
+DATASET_FILE = DATA_DIR / "datasetv3_raw_metadata_labels_merged.csv"
 
 RANDOM_STATE = int(os.getenv("RANDOM_STATE", "42"))
 
@@ -78,6 +73,11 @@ N_REPEATS = int(os.getenv("N_REPEATS", "1"))
 N_BAGS = int(os.getenv("N_BAGS", "30"))
 BENIGN_TO_MALIGNANT_RATIO = int(os.getenv("BENIGN_RATIO", "10"))
 N_ESTIMATORS = int(os.getenv("N_ESTIMATORS", "200"))
+
+OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str((_HERE / f"../../outputs/v3_outputs/v3_outputs_ratio{BENIGN_TO_MALIGNANT_RATIO}_1").resolve())))
+REPORT_DIR = OUTPUT_DIR / "reports"
+GRAPH_DIR = OUTPUT_DIR / "graphs"
+PROCESSED_DATA_DIR = _HERE / "processed_data"
 
 # Inner validation thresholding
 THRESHOLD_TARGET_RECALL = float(os.getenv("THRESHOLD_TARGET_RECALL", "0.80"))
@@ -104,6 +104,24 @@ DROP_FEATURES = {"isic_id", "patient_id", "malignant"}
 ID_COLS_TO_KEEP_IN_OUTPUT = ["isic_id", "patient_id"]
 TOP_K_VALUES = [100, 500, 1000, 5000]
 
+# Same clip ranges used by data_preprocessing_pipeline.py to produce datasetv4.
+CLIP_RANGES = {
+    "age_approx":              (0,   85),
+    "clin_size_long_diam_mm":  (0,  150),
+    "tbp_lv_nevi_confidence":  (0,  100),
+    "tbp_lv_eccentricity":     (0,    1),
+    "tbp_lv_symm_2axis":       (0,    1),
+    "tbp_lv_norm_border":      (0,   10),
+    "tbp_lv_norm_color":       (0,   10),
+    "tbp_lv_area_perim_ratio": (0,  100),
+    "tbp_lv_areaMM2":          (0, 5000),
+    "tbp_lv_perimeterMM":      (0,  500),
+    "tbp_lv_minorAxisMM":      (0,  100),
+}
+
+_CAT_COLS_FOR_IMPUTE = ["sex", "anatom_site_general", "tbp_lv_location",
+                        "tbp_lv_location_simple", "image_type", "tbp_tile_type"]
+
 
 # =============================================================================
 # HELPERS
@@ -112,6 +130,7 @@ TOP_K_VALUES = [100, 500, 1000, 5000]
 def make_dirs() -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     GRAPH_DIR.mkdir(parents=True, exist_ok=True)
+    PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def make_ohe() -> OneHotEncoder:
@@ -162,15 +181,30 @@ def add_engineered_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_data() -> pd.DataFrame:
-    if not METADATA_FILE.exists():
-        raise FileNotFoundError(f"Missing {METADATA_FILE}")
-    if not LABELS_FILE.exists():
-        raise FileNotFoundError(f"Missing {LABELS_FILE}")
+    if not DATASET_FILE.exists():
+        raise FileNotFoundError(f"Missing {DATASET_FILE}")
 
-    metadata = pd.read_csv(METADATA_FILE)
-    labels = pd.read_csv(LABELS_FILE)
-    df = metadata.merge(labels, on="isic_id", how="inner")
+    df = pd.read_csv(DATASET_FILE)
     df["malignant"] = df["malignant"].astype(int)
+
+    # Step 1: impute — same strategy as data_preprocessing_pipeline.py
+    cat_src = [c for c in _CAT_COLS_FOR_IMPUTE if c in df.columns]
+    num_src = [
+        c for c in df.columns
+        if c not in cat_src + ["isic_id", "patient_id", "malignant"]
+        and pd.api.types.is_numeric_dtype(df[c])
+    ]
+    if num_src:
+        df[num_src] = SimpleImputer(strategy="median").fit_transform(df[num_src])
+    if cat_src:
+        df[cat_src] = SimpleImputer(strategy="most_frequent").fit_transform(df[cat_src])
+
+    # Step 2: clip outliers — same ranges as data_preprocessing_pipeline.py
+    for col, (lo, hi) in CLIP_RANGES.items():
+        if col in df.columns:
+            df[col] = df[col].clip(lo, hi)
+
+    # Step 3: engineer features using the same formulas as data_preprocessing_pipeline.py
     df = add_engineered_features(df)
     return df
 
@@ -625,6 +659,10 @@ def main() -> None:
     )
     feature_importance["rank"] = np.arange(1, len(feature_importance) + 1)
 
+    # Save processed data.
+    df.to_csv(PROCESSED_DATA_DIR / "v3_processed.csv", index=False)
+    print(f"\n✓ Processed data saved to {PROCESSED_DATA_DIR}")
+
     # Save outputs
     fold_metrics.to_csv(REPORT_DIR / "v3_cv_metrics_by_fold.csv", index=False)
     metric_summary.to_csv(REPORT_DIR / "v3_cv_metric_mean_std.csv", index=False)
@@ -685,6 +723,7 @@ def main() -> None:
         feature_importance.head(20)[["rank", "feature", "importance", "importance_std"]].to_string(index=False),
         "",
         "OUTPUT FILES",
+        f"  {PROCESSED_DATA_DIR / 'v3_processed.csv'}",
         f"  {REPORT_DIR / 'v3_global_metrics.csv'}",
         f"  {REPORT_DIR / 'v3_cv_metrics_by_fold.csv'}",
         f"  {REPORT_DIR / 'v3_cv_metric_mean_std.csv'}",
