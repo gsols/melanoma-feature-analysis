@@ -64,6 +64,8 @@ _HERE              = Path(__file__).resolve().parent
 _V1_OUTPUTS        = (_HERE / '../../outputs/v1_outputs').resolve()
 _DATASETS          = (_HERE / '../../datasets').resolve()
 OUTPUT_GRAPHS      = str(_V1_OUTPUTS / 'graphs')
+GRAPH_ANALYSIS     = str(_V1_OUTPUTS / 'graphs' / 'analysis')
+GRAPH_FEATURES     = str(_V1_OUTPUTS / 'graphs' / 'features')
 OUTPUT_RESULTS     = str(_V1_OUTPUTS)
 OUTPUT_REPORTS     = str(_V1_OUTPUTS / 'reports')
 OUTPUT_RESULT_GRAPHS = str(_V1_OUTPUTS / 'graphs')
@@ -124,32 +126,41 @@ def main():
 
     # Step 4-5: graph all features
     print(f"\n[Step 4-5] Graphing all {len(FEATURE_RANGES)} features...")
-    os.makedirs(OUTPUT_GRAPHS, exist_ok=True)
-    for feature in FEATURE_RANGES:
+    os.makedirs(GRAPH_FEATURES, exist_ok=True)
+    for index, feature in enumerate(FEATURE_RANGES):
         range_col = f'{feature}_range'
 
         mal_counts = df_malignant[range_col].value_counts().sort_index()
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-        ax1.pie(mal_counts, labels=mal_counts.index, autopct='%1.1f%%', startangle=90)
-        ax1.set_title(f'Malignant: {feature} (n={len(df_malignant)})')
-        mal_counts.plot(kind='bar', ax=ax2, color='red', alpha=0.7)
-        ax2.set_title(f'Malignant {feature}'), ax2.set_ylabel('Count')
-        ax2.tick_params(axis='x', rotation=45)
-        plt.tight_layout()
-        plt.savefig(f'{OUTPUT_GRAPHS}/malignant_{feature}.png', dpi=100, bbox_inches='tight')
-        plt.close()
-
         ben_counts = df_benign[range_col].value_counts().sort_index()
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-        ax1.pie(ben_counts, labels=ben_counts.index, autopct='%1.1f%%', startangle=90)
-        ax1.set_title(f'Benign: {feature} (n={len(df_benign):,})')
-        ben_counts.plot(kind='bar', ax=ax2, color='blue', alpha=0.7)
-        ax2.set_title(f'Benign {feature}'), ax2.set_ylabel('Count')
-        ax2.tick_params(axis='x', rotation=45)
+
+        # Align both to the same category order
+        all_labels = sorted(set(mal_counts.index) | set(ben_counts.index))
+        mal_counts = mal_counts.reindex(all_labels, fill_value=0)
+        ben_counts = ben_counts.reindex(all_labels, fill_value=0)
+
+        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+        fig.suptitle(f'Feature: {feature}', fontsize=14, fontweight='bold')
+
+        axes[0, 0].pie(mal_counts, labels=mal_counts.index, autopct='%1.1f%%', startangle=90)
+        axes[0, 0].set_title(f'Malignant (n={len(df_malignant):,})')
+
+        mal_counts.plot(kind='bar', ax=axes[0, 1], color='red', alpha=0.7)
+        axes[0, 1].set_title(f'Malignant — {feature}')
+        axes[0, 1].set_ylabel('Count')
+        axes[0, 1].tick_params(axis='x', rotation=45)
+
+        axes[1, 0].pie(ben_counts, labels=ben_counts.index, autopct='%1.1f%%', startangle=90)
+        axes[1, 0].set_title(f'Benign (n={len(df_benign):,})')
+
+        ben_counts.plot(kind='bar', ax=axes[1, 1], color='blue', alpha=0.7)
+        axes[1, 1].set_title(f'Benign — {feature}')
+        axes[1, 1].set_ylabel('Count')
+        axes[1, 1].tick_params(axis='x', rotation=45)
+
         plt.tight_layout()
-        plt.savefig(f'{OUTPUT_GRAPHS}/benign_{feature}.png', dpi=100, bbox_inches='tight')
+        plt.savefig(f'{GRAPH_FEATURES}/{index+1}_{feature}.png', dpi=100, bbox_inches='tight')
         plt.close()
-    print(f"✓ {len(FEATURE_RANGES)*2} feature graphs saved")
+    print(f"✓ {len(FEATURE_RANGES)} feature comparison graphs saved")
 
     # Step 6: compute IQR-based malignant reference window per feature
     # Q1–Q3 of malignant values is used (resistant to outliers in small n=393 group)
@@ -246,6 +257,7 @@ def main():
     os.makedirs(OUTPUT_RESULTS, exist_ok=True)
     os.makedirs(OUTPUT_REPORTS, exist_ok=True)
     os.makedirs(OUTPUT_RESULT_GRAPHS, exist_ok=True)
+    os.makedirs(GRAPH_ANALYSIS, exist_ok=True)
 
     # Predictions
     pd.DataFrame({
@@ -328,7 +340,7 @@ MALIGNANT IQR REFERENCE WINDOWS (Q1–Q3 of 393 malignant records)
     axes[1].set_xticklabels(['Not Near-Mal', 'Near-Mal'])
     axes[1].set_yticklabels(['Not Near-Mal', 'Near-Mal'])
     plt.tight_layout()
-    plt.savefig(f'{OUTPUT_RESULT_GRAPHS}/confusion_matrices.png', dpi=100, bbox_inches='tight')
+    plt.savefig(f'{GRAPH_ANALYSIS}/confusion_matrices.png', dpi=100, bbox_inches='tight')
     plt.close()
 
     # ROC comparison
@@ -341,7 +353,7 @@ MALIGNANT IQR REFERENCE WINDOWS (Q1–Q3 of 393 malignant records)
     ax.set_xlabel('False Positive Rate'), ax.set_ylabel('True Positive Rate')
     ax.set_title('ROC Curve Comparison'), ax.legend(), ax.grid(alpha=0.3)
     plt.tight_layout()
-    plt.savefig(f'{OUTPUT_RESULT_GRAPHS}/roc_comparison.png', dpi=100, bbox_inches='tight')
+    plt.savefig(f'{GRAPH_ANALYSIS}/roc_comparison.png', dpi=100, bbox_inches='tight')
     plt.close()
 
     # PR comparison
@@ -353,7 +365,7 @@ MALIGNANT IQR REFERENCE WINDOWS (Q1–Q3 of 393 malignant records)
     ax.set_xlabel('Recall'), ax.set_ylabel('Precision')
     ax.set_title('Precision-Recall Comparison'), ax.legend(), ax.grid(alpha=0.3)
     plt.tight_layout()
-    plt.savefig(f'{OUTPUT_RESULT_GRAPHS}/pr_comparison.png', dpi=100, bbox_inches='tight')
+    plt.savefig(f'{GRAPH_ANALYSIS}/pr_comparison.png', dpi=100, bbox_inches='tight')
     plt.close()
 
     # Metrics bar chart
@@ -372,7 +384,7 @@ MALIGNANT IQR REFERENCE WINDOWS (Q1–Q3 of 393 malignant records)
         ax.text(i - width/2, g + 0.01, f'{g:.3f}', ha='center', fontsize=8)
         ax.text(i + width/2, c + 0.01, f'{c:.3f}', ha='center', fontsize=8)
     plt.tight_layout()
-    plt.savefig(f'{OUTPUT_RESULT_GRAPHS}/metrics_comparison.png', dpi=100, bbox_inches='tight')
+    plt.savefig(f'{GRAPH_ANALYSIS}/metrics_comparison.png', dpi=100, bbox_inches='tight')
     plt.close()
 
     # Probability distribution
@@ -386,7 +398,7 @@ MALIGNANT IQR REFERENCE WINDOWS (Q1–Q3 of 393 malignant records)
     axes[1].set_title('CategoricalNB Probabilities'), axes[1].legend()
     axes[1].set_xlabel('P(near_malignant)'), axes[1].set_ylabel('Count')
     plt.tight_layout()
-    plt.savefig(f'{OUTPUT_RESULT_GRAPHS}/probability_distributions.png', dpi=100, bbox_inches='tight')
+    plt.savefig(f'{GRAPH_ANALYSIS}/probability_distributions.png', dpi=100, bbox_inches='tight')
     plt.close()
 
     # Similarity score distribution
@@ -400,7 +412,7 @@ MALIGNANT IQR REFERENCE WINDOWS (Q1–Q3 of 393 malignant records)
     ax.set_xlabel('Similarity Score'), ax.set_ylabel('Count')
     ax.set_title('Benign Similarity Score Distribution'), ax.legend()
     plt.tight_layout()
-    plt.savefig(f'{OUTPUT_RESULT_GRAPHS}/similarity_distribution.png', dpi=100, bbox_inches='tight')
+    plt.savefig(f'{GRAPH_ANALYSIS}/similarity_distribution.png', dpi=100, bbox_inches='tight')
     plt.close()
 
     print("\n" + "=" * 80)
