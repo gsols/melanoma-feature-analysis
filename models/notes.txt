@@ -1,0 +1,9 @@
+what to put here:
+
+folders for each model
+
+model_v1/
+model_v2/
+and on...
+
+inside each model folder contains the script for the model and a processed_data folder that is used for the respective model.

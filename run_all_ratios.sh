@@ -10,7 +10,7 @@ for ratio in 5 10 15 20 25 30; do
   echo "=========================================="
   echo "Training ratio $ratio:1..."
   echo "=========================================="
-  RATIO=$ratio python3 isic_model_v4_ratio_balanced.py
+  RATIO=$ratio python3 models/model_v4/isic_model_v4_ratio_balanced.py
   echo ""
 done
 
@@ -23,7 +23,7 @@ python3 << 'PYTHON_EOF'
 import pandas as pd
 
 # Load registry
-df = pd.read_csv('reports/v4_ratio_model_registry.csv')
+df = pd.read_csv('outputs/v4_outputs/v4_ratio_model_registry.csv')
 
 # Sort by ratio
 df = df.sort_values('ratio')
@@ -51,7 +51,7 @@ echo "  python3 << 'EOF'"
 echo "  import pandas as pd"
 echo "  import matplotlib.pyplot as plt"
 echo "  "
-echo "  df = pd.read_csv('reports/v4_ratio_model_registry.csv')"
+echo "  df = pd.read_csv('outputs/v4_outputs/v4_ratio_model_registry.csv')"
 echo "  df = df.sort_values('ratio')"
 echo "  "
 echo "  fig, axes = plt.subplots(2, 2, figsize=(14, 10))"

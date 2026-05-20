@@ -1,0 +1,6 @@
+what to put here:
+
+all the outputs per model with the graphs folders and reports folders
+
+
+for v4 outputs, put in a parent v4_outputs the inside are the output folders per ratio
