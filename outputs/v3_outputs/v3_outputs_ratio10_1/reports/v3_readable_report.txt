@@ -1,5 +1,5 @@
 ============================================================================
-ISIC 2024 — V3 Repeated Patient-Group CV Balanced Bagging
+ISIC 2024 — V3 Repeated Patient-Group CV Balanced Bagging (10:1 Ratio)
 ============================================================================
 
 DATASET

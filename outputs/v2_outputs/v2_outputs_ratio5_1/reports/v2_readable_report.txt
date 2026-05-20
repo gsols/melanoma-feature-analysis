@@ -1,5 +1,5 @@
 ========================================================================
-ISIC 2024 — V2 Balanced Bagging Metadata Model
+ISIC 2024 — V2 Balanced Bagging Metadata Model (5:1 Ratio)
 ========================================================================
 
 DATASET
