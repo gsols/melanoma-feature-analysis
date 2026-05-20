@@ -62,10 +62,13 @@ TEST_SIZE = float(os.getenv("TEST_SIZE", "0.20"))
 
 # Balanced bagging settings
 N_BAGS = int(os.getenv("N_BAGS", "30"))
-BENIGN_TO_MALIGNANT_RATIO = int(os.getenv("BENIGN_RATIO", "5"))  # try 5, 10, 20
+RATIOS = [5, 10, 20]
 N_ESTIMATORS = int(os.getenv("N_ESTIMATORS", "200"))
 
-OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str((_HERE / f"../../outputs/v2_outputs/v2_outputs_ratio{BENIGN_TO_MALIGNANT_RATIO}_1").resolve())))
+# Per-ratio dirs — updated inside the main() loop
+BENIGN_TO_MALIGNANT_RATIO = RATIOS[0]
+_V2_OUTPUTS = (_HERE / "../../outputs/v2_outputs").resolve()
+OUTPUT_DIR = _V2_OUTPUTS / f"v2_outputs_ratio{BENIGN_TO_MALIGNANT_RATIO}_1"
 REPORT_DIR = OUTPUT_DIR / "reports"
 GRAPH_DIR = OUTPUT_DIR / "graphs"
 PROCESSED_DATA_DIR = _HERE / "processed_data"
@@ -347,15 +350,17 @@ def save_graphs(y_true: np.ndarray, probs: np.ndarray, feature_importance: pd.Da
 
 
 def main() -> None:
+    global BENIGN_TO_MALIGNANT_RATIO, OUTPUT_DIR, REPORT_DIR, GRAPH_DIR
     t0 = time.time()
-    make_dirs()
 
     print("=" * 72)
     print("ISIC 2024 — V2 Balanced Bagging Metadata Model")
     print("=" * 72)
+    print(f"\nRatios to run: {RATIOS}")
 
+    # Load, split, and preprocess once — shared across all ratio runs
     df = load_data()
-    print(f"Loaded: {len(df):,} rows x {df.shape[1]} columns")
+    print(f"\nLoaded: {len(df):,} rows x {df.shape[1]} columns")
     print(f"Benign: {(df['malignant'] == 0).sum():,}")
     print(f"Malignant: {df['malignant'].sum():,}")
 
@@ -386,133 +391,152 @@ def main() -> None:
 
     pos_idx = np.where(y_train == 1)[0]
     neg_idx = np.where(y_train == 0)[0]
-    n_benign_per_bag = min(len(neg_idx), BENIGN_TO_MALIGNANT_RATIO * len(pos_idx))
 
-    print("\nTraining balanced bagging LightGBM")
-    print(f"  Bags                  : {N_BAGS}")
-    print(f"  Per bag malignant     : {len(pos_idx):,}")
-    print(f"  Per bag benign        : {n_benign_per_bag:,}")
-    print(f"  Per bag ratio         : about {n_benign_per_bag / max(1, len(pos_idx)):.1f}:1")
-    print(f"  Estimators per bag    : {N_ESTIMATORS}")
-
-    rng = np.random.default_rng(RANDOM_STATE)
-    test_probs = np.zeros(len(test_df), dtype=np.float64)
-    importances = []
-
-    for bag in range(N_BAGS):
-        benign_sample = rng.choice(neg_idx, size=n_benign_per_bag, replace=False)
-        bag_idx = np.concatenate([pos_idx, benign_sample])
-        rng.shuffle(bag_idx)
-        y_bag = y_train[bag_idx]
-
-        params = dict(LGBM_PARAMS)
-        params["scale_pos_weight"] = (y_bag == 0).sum() / max(1, (y_bag == 1).sum())
-        params["random_state"] = RANDOM_STATE + bag
-
-        model = LGBMClassifier(**params)
-        model.fit(X_train[bag_idx], y_bag)
-
-        test_probs += model.predict_proba(X_test)[:, 1] / N_BAGS
-        importances.append(model.feature_importances_)
-
-        if (bag + 1) % max(1, N_BAGS // 10) == 0 or bag == 0:
-            print(f"  Finished bag {bag + 1:>3}/{N_BAGS} | elapsed {time.time() - t0:.1f}s")
-
-    metrics, tables = evaluate_predictions(y_test, test_probs)
-
-    importance = pd.DataFrame({
-        "feature": feature_names,
-        "importance": np.mean(importances, axis=0),
-        "importance_std": np.std(importances, axis=0),
-    }).sort_values("importance", ascending=False).reset_index(drop=True)
-    importance["rank"] = np.arange(1, len(importance) + 1)
-
-    # Save train/test splits to processed_data folder.
+    # Save train/test splits once (shared across ratios)
+    PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
     train_df.to_csv(PROCESSED_DATA_DIR / "v2_train.csv", index=False)
     test_df.to_csv(PROCESSED_DATA_DIR / "v2_test.csv", index=False)
     print(f"\n✓ Train/test splits saved to {PROCESSED_DATA_DIR}")
 
-    # Save predictions with ID columns if available.
-    output_cols = [c for c in ID_COLS_TO_KEEP_IN_OUTPUT if c in test_df.columns]
-    output_cols += ["malignant"]
-    pred_out = test_df[output_cols].copy()
-    pred_out["v2_malignancy_score"] = test_probs
-    pred_out = pred_out.sort_values("v2_malignancy_score", ascending=False).reset_index(drop=True)
-    pred_out.index += 1
-    pred_out.index.name = "risk_rank"
+    # =========================================================================
+    # MAIN LOOP — iterate over each ratio
+    # =========================================================================
 
-    # Save all outputs.
-    with open(REPORT_DIR / "v2_metrics.json", "w") as f:
-        json.dump(metrics, f, indent=2)
+    for ratio in RATIOS:
+        BENIGN_TO_MALIGNANT_RATIO = ratio
+        OUTPUT_DIR = _V2_OUTPUTS / f"v2_outputs_ratio{ratio}_1"
+        REPORT_DIR = OUTPUT_DIR / "reports"
+        GRAPH_DIR = OUTPUT_DIR / "graphs"
+        make_dirs()
 
-    pd.DataFrame([metrics]).to_csv(REPORT_DIR / "v2_metrics_summary.csv", index=False)
-    tables["top_k"].to_csv(REPORT_DIR / "v2_top_k_recall.csv", index=False)
-    tables["operating_points"].to_csv(REPORT_DIR / "v2_high_recall_operating_points.csv", index=False)
-    importance.to_csv(REPORT_DIR / "v2_feature_importance.csv", index=False)
-    pred_out.to_csv(REPORT_DIR / "v2_test_predictions_ranked.csv")
+        n_benign_per_bag = min(len(neg_idx), ratio * len(pos_idx))
 
-    save_graphs(y_test, test_probs, importance, metrics)
+        print(f"\n{'='*72}")
+        print(f"RATIO {ratio}:1  (benign:malignant)")
+        print(f"{'='*72}")
+        print(f"\nTraining balanced bagging LightGBM")
+        print(f"  Bags                  : {N_BAGS}")
+        print(f"  Per bag malignant     : {len(pos_idx):,}")
+        print(f"  Per bag benign        : {n_benign_per_bag:,}")
+        print(f"  Per bag ratio         : about {n_benign_per_bag / max(1, len(pos_idx)):.1f}:1")
+        print(f"  Estimators per bag    : {N_ESTIMATORS}")
 
-    # Human-readable report.
-    report_lines = [
-        "=" * 72,
-        "ISIC 2024 — V2 Balanced Bagging Metadata Model",
-        "=" * 72,
-        "",
-        "DATASET",
-        f"  Total rows        : {len(df):,}",
-        f"  Benign            : {(df['malignant'] == 0).sum():,}",
-        f"  Malignant         : {df['malignant'].sum():,}",
-        f"  Train rows        : {len(train_df):,}",
-        f"  Test rows         : {len(test_df):,}",
-        f"  Test malignant    : {int(y_test.sum()):,}",
-        f"  Test benign       : {int((y_test == 0).sum()):,}",
-        f"  Split strategy     : stratified random (80/20)",
-        "",
-        "MODEL",
-        f"  Algorithm         : LightGBM balanced undersampling ensemble",
-        f"  Bags              : {N_BAGS}",
-        f"  Benign ratio/bag  : {BENIGN_TO_MALIGNANT_RATIO}:1",
-        f"  Estimators/bag    : {N_ESTIMATORS}",
-        f"  Original features : {len(feature_cols)} non-ID metadata + engineered features",
-        f"  Transformed feats : {X_train.shape[1]}",
-        "",
-        "MAIN TEST METRICS",
-        f"  PR-AUC            : {metrics['pr_auc']:.6f}",
-        f"  ROC-AUC           : {metrics['roc_auc']:.6f}",
-        f"  Best-F1 threshold : {metrics['best_f1_threshold']:.6f}",
-        f"  F1                : {metrics['best_f1']:.6f}",
-        f"  Precision         : {metrics['precision_at_best_f1']:.6f}",
-        f"  Recall            : {metrics['recall_at_best_f1']:.6f}",
-        f"  Confusion matrix  : TP={metrics['tp_at_best_f1']}, FP={metrics['fp_at_best_f1']}, FN={metrics['fn_at_best_f1']}, TN={metrics['tn_at_best_f1']}",
-        "",
-        "TOP-K RECALL",
-        tables["top_k"].to_string(index=False),
-        "",
-        "HIGH-RECALL OPERATING POINTS",
-        "  These are evaluation operating points. In a final system, choose thresholds using validation/CV, not the test set.",
-        tables["operating_points"].to_string(index=False),
-        "",
-        "TOP 20 FEATURES",
-        importance.head(20)[["rank", "feature", "importance", "importance_std"]].to_string(index=False),
-        "",
-        "OUTPUT FILES",
-        f"  {REPORT_DIR / 'v2_metrics_summary.csv'}",
-        f"  {REPORT_DIR / 'v2_top_k_recall.csv'}",
-        f"  {REPORT_DIR / 'v2_high_recall_operating_points.csv'}",
-        f"  {REPORT_DIR / 'v2_feature_importance.csv'}",
-        f"  {REPORT_DIR / 'v2_test_predictions_ranked.csv'}",
-        f"  {GRAPH_DIR / 'v2_precision_recall_curve.png'}",
-        f"  {GRAPH_DIR / 'v2_confusion_matrix_best_f1.png'}",
-        f"  {GRAPH_DIR / 'v2_feature_importance.png'}",
-    ]
+        rng = np.random.default_rng(RANDOM_STATE)
+        test_probs = np.zeros(len(test_df), dtype=np.float64)
+        importances = []
 
-    report_text = "\n".join(report_lines)
-    with open(REPORT_DIR / "v2_readable_report.txt", "w") as f:
-        f.write(report_text)
+        for bag in range(N_BAGS):
+            benign_sample = rng.choice(neg_idx, size=n_benign_per_bag, replace=False)
+            bag_idx = np.concatenate([pos_idx, benign_sample])
+            rng.shuffle(bag_idx)
+            y_bag = y_train[bag_idx]
 
-    print("\n" + report_text)
-    print(f"\nDone. Total elapsed: {time.time() - t0:.1f}s")
+            params = dict(LGBM_PARAMS)
+            params["scale_pos_weight"] = (y_bag == 0).sum() / max(1, (y_bag == 1).sum())
+            params["random_state"] = RANDOM_STATE + bag
+
+            model = LGBMClassifier(**params)
+            model.fit(X_train[bag_idx], y_bag)
+
+            test_probs += model.predict_proba(X_test)[:, 1] / N_BAGS
+            importances.append(model.feature_importances_)
+
+            if (bag + 1) % max(1, N_BAGS // 10) == 0 or bag == 0:
+                print(f"  Finished bag {bag + 1:>3}/{N_BAGS} | elapsed {time.time() - t0:.1f}s")
+
+        metrics, tables = evaluate_predictions(y_test, test_probs)
+
+        importance = pd.DataFrame({
+            "feature": feature_names,
+            "importance": np.mean(importances, axis=0),
+            "importance_std": np.std(importances, axis=0),
+        }).sort_values("importance", ascending=False).reset_index(drop=True)
+        importance["rank"] = np.arange(1, len(importance) + 1)
+
+        output_cols = [c for c in ID_COLS_TO_KEEP_IN_OUTPUT if c in test_df.columns]
+        output_cols += ["malignant"]
+        pred_out = test_df[output_cols].copy()
+        pred_out["v2_malignancy_score"] = test_probs
+        pred_out = pred_out.sort_values("v2_malignancy_score", ascending=False).reset_index(drop=True)
+        pred_out.index += 1
+        pred_out.index.name = "risk_rank"
+
+        with open(REPORT_DIR / "v2_metrics.json", "w") as f:
+            json.dump(metrics, f, indent=2)
+
+        pd.DataFrame([metrics]).to_csv(REPORT_DIR / "v2_metrics_summary.csv", index=False)
+        tables["top_k"].to_csv(REPORT_DIR / "v2_top_k_recall.csv", index=False)
+        tables["operating_points"].to_csv(REPORT_DIR / "v2_high_recall_operating_points.csv", index=False)
+        importance.to_csv(REPORT_DIR / "v2_feature_importance.csv", index=False)
+        pred_out.to_csv(REPORT_DIR / "v2_test_predictions_ranked.csv")
+
+        save_graphs(y_test, test_probs, importance, metrics)
+
+        report_lines = [
+            "=" * 72,
+            f"ISIC 2024 — V2 Balanced Bagging Metadata Model ({ratio}:1 Ratio)",
+            "=" * 72,
+            "",
+            "DATASET",
+            f"  Total rows        : {len(df):,}",
+            f"  Benign            : {(df['malignant'] == 0).sum():,}",
+            f"  Malignant         : {df['malignant'].sum():,}",
+            f"  Train rows        : {len(train_df):,}",
+            f"  Test rows         : {len(test_df):,}",
+            f"  Test malignant    : {int(y_test.sum()):,}",
+            f"  Test benign       : {int((y_test == 0).sum()):,}",
+            f"  Split strategy     : stratified random (80/20)",
+            "",
+            "MODEL",
+            f"  Algorithm         : LightGBM balanced undersampling ensemble",
+            f"  Bags              : {N_BAGS}",
+            f"  Benign ratio/bag  : {ratio}:1",
+            f"  Estimators/bag    : {N_ESTIMATORS}",
+            f"  Original features : {len(feature_cols)} non-ID metadata + engineered features",
+            f"  Transformed feats : {X_train.shape[1]}",
+            "",
+            "MAIN TEST METRICS",
+            f"  PR-AUC            : {metrics['pr_auc']:.6f}",
+            f"  ROC-AUC           : {metrics['roc_auc']:.6f}",
+            f"  Best-F1 threshold : {metrics['best_f1_threshold']:.6f}",
+            f"  F1                : {metrics['best_f1']:.6f}",
+            f"  Precision         : {metrics['precision_at_best_f1']:.6f}",
+            f"  Recall            : {metrics['recall_at_best_f1']:.6f}",
+            f"  Confusion matrix  : TP={metrics['tp_at_best_f1']}, FP={metrics['fp_at_best_f1']}, FN={metrics['fn_at_best_f1']}, TN={metrics['tn_at_best_f1']}",
+            "",
+            "TOP-K RECALL",
+            tables["top_k"].to_string(index=False),
+            "",
+            "HIGH-RECALL OPERATING POINTS",
+            "  These are evaluation operating points. In a final system, choose thresholds using validation/CV, not the test set.",
+            tables["operating_points"].to_string(index=False),
+            "",
+            "TOP 20 FEATURES",
+            importance.head(20)[["rank", "feature", "importance", "importance_std"]].to_string(index=False),
+            "",
+            "OUTPUT FILES",
+            f"  {REPORT_DIR / 'v2_metrics_summary.csv'}",
+            f"  {REPORT_DIR / 'v2_top_k_recall.csv'}",
+            f"  {REPORT_DIR / 'v2_high_recall_operating_points.csv'}",
+            f"  {REPORT_DIR / 'v2_feature_importance.csv'}",
+            f"  {REPORT_DIR / 'v2_test_predictions_ranked.csv'}",
+            f"  {GRAPH_DIR / 'v2_precision_recall_curve.png'}",
+            f"  {GRAPH_DIR / 'v2_confusion_matrix_best_f1.png'}",
+            f"  {GRAPH_DIR / 'v2_feature_importance.png'}",
+        ]
+
+        report_text = "\n".join(report_lines)
+        with open(REPORT_DIR / "v2_readable_report.txt", "w") as f:
+            f.write(report_text)
+
+        print("\n" + report_text)
+
+        print(f"\n{'='*72}")
+        print(f"RATIO {ratio}:1 COMPLETE  |  Output: {OUTPUT_DIR}")
+        print(f"{'='*72}")
+
+    print(f"\nCompleted {len(RATIOS)} ratio run(s): {RATIOS}")
+    print(f"Done. Total elapsed: {time.time() - t0:.1f}s")
 
 
 if __name__ == "__main__":

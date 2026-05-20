@@ -71,10 +71,13 @@ N_REPEATS = int(os.getenv("N_REPEATS", "1"))
 
 # Balanced bagging settings
 N_BAGS = int(os.getenv("N_BAGS", "30"))
-BENIGN_TO_MALIGNANT_RATIO = int(os.getenv("BENIGN_RATIO", "10"))
+RATIOS = [5, 10, 20]
 N_ESTIMATORS = int(os.getenv("N_ESTIMATORS", "200"))
 
-OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str((_HERE / f"../../outputs/v3_outputs/v3_outputs_ratio{BENIGN_TO_MALIGNANT_RATIO}_1").resolve())))
+# Per-ratio dirs — updated inside the main() loop
+BENIGN_TO_MALIGNANT_RATIO = RATIOS[0]
+_V3_OUTPUTS = (_HERE / "../../outputs/v3_outputs").resolve()
+OUTPUT_DIR = _V3_OUTPUTS / f"v3_outputs_ratio{BENIGN_TO_MALIGNANT_RATIO}_1"
 REPORT_DIR = OUTPUT_DIR / "reports"
 GRAPH_DIR = OUTPUT_DIR / "graphs"
 PROCESSED_DATA_DIR = _HERE / "processed_data"
@@ -487,260 +490,282 @@ def save_graphs(y_true: np.ndarray, probs: np.ndarray, global_metrics: dict, fea
 # =============================================================================
 
 def main() -> None:
+    global BENIGN_TO_MALIGNANT_RATIO, OUTPUT_DIR, REPORT_DIR, GRAPH_DIR
     t0 = time.time()
-    make_dirs()
 
     print("=" * 76)
     print("ISIC 2024 — V3 Repeated Patient-Group CV Balanced Bagging")
     print("=" * 76)
+    print(f"\nRatios to run: {RATIOS}")
 
+    # Load data once — shared across all ratio runs
     df = load_data()
     y_all = df["malignant"].values.astype(int)
     feature_cols = [c for c in df.columns if c not in DROP_FEATURES]
 
-    print(f"Loaded: {len(df):,} rows x {df.shape[1]} columns")
+    print(f"\nLoaded: {len(df):,} rows x {df.shape[1]} columns")
     print(f"Benign: {(df['malignant'] == 0).sum():,}")
     print(f"Malignant: {df['malignant'].sum():,}")
     print(f"Original feature columns: {len(feature_cols)}")
     print(f"CV: {N_SPLITS} folds x {N_REPEATS} repeat(s)")
-    print(f"Bagging: {N_BAGS} bags, benign ratio {BENIGN_TO_MALIGNANT_RATIO}:1, estimators {N_ESTIMATORS}")
     print(f"Threshold strategy: inner validation, target recall {THRESHOLD_TARGET_RECALL:.2f}")
-    print()
 
-    all_prediction_frames = []
-    fold_metric_rows = []
-    threshold_rows = []
-    topk_fold_rows = []
-    feature_importance_rows = []
+    # Save processed data once
+    PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    df.to_csv(PROCESSED_DATA_DIR / "v3_processed.csv", index=False)
+    print(f"✓ Processed data saved to {PROCESSED_DATA_DIR}")
 
-    for repeat in range(N_REPEATS):
-        splits, groups = make_cv_splits(df, y_all, repeat)
+    # =========================================================================
+    # MAIN LOOP — iterate over each ratio
+    # =========================================================================
 
-        for fold, (train_idx, test_idx) in enumerate(splits, start=1):
-            fold_start = time.time()
-            train_df = df.iloc[train_idx].reset_index(drop=True)
-            test_df = df.iloc[test_idx].reset_index(drop=True)
+    for ratio in RATIOS:
+        BENIGN_TO_MALIGNANT_RATIO = ratio
+        OUTPUT_DIR = _V3_OUTPUTS / f"v3_outputs_ratio{ratio}_1"
+        REPORT_DIR = OUTPUT_DIR / "reports"
+        GRAPH_DIR = OUTPUT_DIR / "graphs"
+        make_dirs()
 
-            y_train = train_df["malignant"].values.astype(int)
-            y_test = test_df["malignant"].values.astype(int)
+        print(f"\n{'='*76}")
+        print(f"RATIO {ratio}:1  (benign:malignant)")
+        print(f"{'='*76}")
+        print(f"Bagging: {N_BAGS} bags, benign ratio {ratio}:1, estimators {N_ESTIMATORS}")
+        print()
 
-            print("-" * 76)
-            print(
-                f"Repeat {repeat + 1}/{N_REPEATS}, fold {fold}/{N_SPLITS} | "
-                f"train malignant={y_train.sum():,}, test malignant={y_test.sum():,}"
-            )
+        all_prediction_frames = []
+        fold_metric_rows = []
+        threshold_rows = []
+        topk_fold_rows = []
+        feature_importance_rows = []
 
-            if y_test.sum() == 0:
-                print("  WARNING: held-out fold has no malignant cases; skipping fold metrics.")
-                continue
+        for repeat in range(N_REPEATS):
+            splits, groups = make_cv_splits(df, y_all, repeat)
 
-            threshold, threshold_details = choose_threshold_from_inner_validation(
-                train_df=train_df,
-                feature_cols=feature_cols,
-                seed=RANDOM_STATE + repeat * 1000 + fold * 100,
-            )
+            for fold, (train_idx, test_idx) in enumerate(splits, start=1):
+                fold_start = time.time()
+                train_df = df.iloc[train_idx].reset_index(drop=True)
+                test_df = df.iloc[test_idx].reset_index(drop=True)
 
-            preprocessor, numeric_cols, categorical_cols = build_preprocessor(train_df, feature_cols)
-            X_train = preprocessor.fit_transform(train_df[feature_cols])
-            X_test = preprocessor.transform(test_df[feature_cols])
-            feature_names = get_transformed_feature_names(preprocessor, numeric_cols, categorical_cols)
+                y_train = train_df["malignant"].values.astype(int)
+                y_test = test_df["malignant"].values.astype(int)
 
-            print(f"  Transformed features: {X_train.shape[1]} | sparse={sparse.issparse(X_train)}")
-            print(f"  Inner threshold: {threshold:.6f}")
+                print("-" * 76)
+                print(
+                    f"Repeat {repeat + 1}/{N_REPEATS}, fold {fold}/{N_SPLITS} | "
+                    f"train malignant={y_train.sum():,}, test malignant={y_test.sum():,}"
+                )
 
-            probs, importance = train_bagging_predict(
-                X_train,
-                y_train,
-                X_test,
-                seed=RANDOM_STATE + repeat * 1000 + fold * 100,
-                feature_count=X_train.shape[1],
-            )
+                if y_test.sum() == 0:
+                    print("  WARNING: held-out fold has no malignant cases; skipping fold metrics.")
+                    continue
 
-            metrics = compute_metrics(y_test, probs, threshold)
-            metrics.update({
-                "repeat": repeat + 1,
-                "fold": fold,
-                "train_n": int(len(train_df)),
-                "train_malignant": int(y_train.sum()),
-                "train_benign": int((y_train == 0).sum()),
-                "elapsed_seconds": float(time.time() - fold_start),
-            })
-            fold_metric_rows.append(metrics)
+                threshold, threshold_details = choose_threshold_from_inner_validation(
+                    train_df=train_df,
+                    feature_cols=feature_cols,
+                    seed=RANDOM_STATE + repeat * 1000 + fold * 100,
+                )
 
-            threshold_row = {"repeat": repeat + 1, "fold": fold}
-            threshold_row.update(threshold_details)
-            threshold_rows.append(threshold_row)
+                preprocessor, numeric_cols, categorical_cols = build_preprocessor(train_df, feature_cols)
+                X_train = preprocessor.fit_transform(train_df[feature_cols])
+                X_test = preprocessor.transform(test_df[feature_cols])
+                feature_names = get_transformed_feature_names(preprocessor, numeric_cols, categorical_cols)
 
-            topk = compute_top_k(y_test, probs)
-            topk.insert(0, "fold", fold)
-            topk.insert(0, "repeat", repeat + 1)
-            topk_fold_rows.append(topk)
+                print(f"  Transformed features: {X_train.shape[1]} | sparse={sparse.issparse(X_train)}")
+                print(f"  Inner threshold: {threshold:.6f}")
 
-            for name, imp in zip(feature_names, importance):
-                feature_importance_rows.append({
+                probs, importance = train_bagging_predict(
+                    X_train,
+                    y_train,
+                    X_test,
+                    seed=RANDOM_STATE + repeat * 1000 + fold * 100,
+                    feature_count=X_train.shape[1],
+                )
+
+                metrics = compute_metrics(y_test, probs, threshold)
+                metrics.update({
                     "repeat": repeat + 1,
                     "fold": fold,
-                    "feature": name,
-                    "importance": float(imp),
+                    "train_n": int(len(train_df)),
+                    "train_malignant": int(y_train.sum()),
+                    "train_benign": int((y_train == 0).sum()),
+                    "elapsed_seconds": float(time.time() - fold_start),
                 })
+                fold_metric_rows.append(metrics)
 
-            output_cols = [c for c in ID_COLS_TO_KEEP_IN_OUTPUT if c in test_df.columns]
-            pred = test_df[output_cols + ["malignant"]].copy()
-            pred["repeat"] = repeat + 1
-            pred["fold"] = fold
-            pred["v3_malignancy_score"] = probs
-            pred["inner_validation_threshold"] = threshold
-            pred["v3_predicted_positive"] = (probs >= threshold).astype(int)
-            all_prediction_frames.append(pred)
+                threshold_row = {"repeat": repeat + 1, "fold": fold}
+                threshold_row.update(threshold_details)
+                threshold_rows.append(threshold_row)
 
-            print(
-                f"  Fold metrics: PR-AUC={metrics['pr_auc']:.5f}, ROC-AUC={metrics['roc_auc']:.5f}, "
-                f"Precision={metrics['precision']:.5f}, Recall={metrics['recall']:.5f}, F1={metrics['f1']:.5f}"
+                topk = compute_top_k(y_test, probs)
+                topk.insert(0, "fold", fold)
+                topk.insert(0, "repeat", repeat + 1)
+                topk_fold_rows.append(topk)
+
+                for name, imp in zip(feature_names, importance):
+                    feature_importance_rows.append({
+                        "repeat": repeat + 1,
+                        "fold": fold,
+                        "feature": name,
+                        "importance": float(imp),
+                    })
+
+                output_cols = [c for c in ID_COLS_TO_KEEP_IN_OUTPUT if c in test_df.columns]
+                pred = test_df[output_cols + ["malignant"]].copy()
+                pred["repeat"] = repeat + 1
+                pred["fold"] = fold
+                pred["v3_malignancy_score"] = probs
+                pred["inner_validation_threshold"] = threshold
+                pred["v3_predicted_positive"] = (probs >= threshold).astype(int)
+                all_prediction_frames.append(pred)
+
+                print(
+                    f"  Fold metrics: PR-AUC={metrics['pr_auc']:.5f}, ROC-AUC={metrics['roc_auc']:.5f}, "
+                    f"Precision={metrics['precision']:.5f}, Recall={metrics['recall']:.5f}, F1={metrics['f1']:.5f}"
+                )
+                print(f"  Finished fold in {time.time() - fold_start:.1f}s")
+
+        if not fold_metric_rows:
+            print(f"  WARNING: No valid folds completed for ratio {ratio}. Skipping.")
+            continue
+
+        fold_metrics = pd.DataFrame(fold_metric_rows)
+        threshold_df = pd.DataFrame(threshold_rows)
+        topk_by_fold = pd.concat(topk_fold_rows, ignore_index=True) if topk_fold_rows else pd.DataFrame()
+
+        preds_all = pd.concat(all_prediction_frames, ignore_index=True)
+        preds_all_sorted = preds_all.sort_values("v3_malignancy_score", ascending=False).reset_index(drop=True)
+        preds_all_sorted.index += 1
+        preds_all_sorted.index.name = "risk_rank"
+
+        if "isic_id" in preds_all.columns and N_REPEATS > 1:
+            agg_cols = ["isic_id"]
+            keep_cols = [c for c in ["patient_id"] if c in preds_all.columns]
+            pred_mean = (
+                preds_all
+                .groupby(agg_cols, as_index=False)
+                .agg({
+                    **{c: "first" for c in keep_cols},
+                    "malignant": "first",
+                    "v3_malignancy_score": "mean",
+                    "v3_predicted_positive": "mean",
+                })
             )
-            print(f"  Finished fold in {time.time() - fold_start:.1f}s")
+            y_global = pred_mean["malignant"].values.astype(int)
+            probs_global = pred_mean["v3_malignancy_score"].values
+            threshold_global = float(fold_metrics["threshold"].median())
+            pred_mean["v3_predicted_positive"] = (pred_mean["v3_malignancy_score"] >= threshold_global).astype(int)
+            pred_mean = pred_mean.sort_values("v3_malignancy_score", ascending=False).reset_index(drop=True)
+            pred_mean.index += 1
+            pred_mean.index.name = "risk_rank"
+        else:
+            pred_mean = preds_all_sorted.copy()
+            y_global = pred_mean["malignant"].values.astype(int)
+            probs_global = pred_mean["v3_malignancy_score"].values
+            threshold_global = float(fold_metrics["threshold"].median())
 
-    if not fold_metric_rows:
-        raise RuntimeError("No valid folds completed.")
+        global_metrics = compute_metrics(y_global, probs_global, threshold_global)
+        topk_global = compute_top_k(y_global, probs_global)
 
-    fold_metrics = pd.DataFrame(fold_metric_rows)
-    threshold_df = pd.DataFrame(threshold_rows)
-    topk_by_fold = pd.concat(topk_fold_rows, ignore_index=True) if topk_fold_rows else pd.DataFrame()
-
-    preds_all = pd.concat(all_prediction_frames, ignore_index=True)
-    # For N_REPEATS > 1, every row appears once per repeat. We keep both:
-    # 1) per-repeat predictions, and 2) mean score per original isic_id/patient_id if isic_id exists.
-    preds_all_sorted = preds_all.sort_values("v3_malignancy_score", ascending=False).reset_index(drop=True)
-    preds_all_sorted.index += 1
-    preds_all_sorted.index.name = "risk_rank"
-
-    if "isic_id" in preds_all.columns and N_REPEATS > 1:
-        agg_cols = ["isic_id"]
-        keep_cols = [c for c in ["patient_id"] if c in preds_all.columns]
-        pred_mean = (
-            preds_all
-            .groupby(agg_cols, as_index=False)
-            .agg({
-                **{c: "first" for c in keep_cols},
-                "malignant": "first",
-                "v3_malignancy_score": "mean",
-                "v3_predicted_positive": "mean",
-            })
+        metric_summary = summarize_numeric(
+            fold_metrics,
+            ["pr_auc", "roc_auc", "f1", "precision", "recall", "tp", "fp", "fn", "tn"],
         )
-        y_global = pred_mean["malignant"].values.astype(int)
-        probs_global = pred_mean["v3_malignancy_score"].values
-        threshold_global = float(fold_metrics["threshold"].median())
-        pred_mean["v3_predicted_positive"] = (pred_mean["v3_malignancy_score"] >= threshold_global).astype(int)
-        pred_mean = pred_mean.sort_values("v3_malignancy_score", ascending=False).reset_index(drop=True)
-        pred_mean.index += 1
-        pred_mean.index.name = "risk_rank"
-    else:
-        pred_mean = preds_all_sorted.copy()
-        y_global = pred_mean["malignant"].values.astype(int)
-        probs_global = pred_mean["v3_malignancy_score"].values
-        threshold_global = float(fold_metrics["threshold"].median())
 
-    global_metrics = compute_metrics(y_global, probs_global, threshold_global)
-    topk_global = compute_top_k(y_global, probs_global)
-
-    metric_summary = summarize_numeric(
-        fold_metrics,
-        ["pr_auc", "roc_auc", "f1", "precision", "recall", "tp", "fp", "fn", "tn"],
-    )
-
-    feature_importance = (
-        pd.DataFrame(feature_importance_rows)
-        .groupby("feature", as_index=False)
-        .agg(
-            importance=("importance", "mean"),
-            importance_std=("importance", "std"),
+        feature_importance = (
+            pd.DataFrame(feature_importance_rows)
+            .groupby("feature", as_index=False)
+            .agg(
+                importance=("importance", "mean"),
+                importance_std=("importance", "std"),
+            )
+            .sort_values("importance", ascending=False)
+            .reset_index(drop=True)
         )
-        .sort_values("importance", ascending=False)
-        .reset_index(drop=True)
-    )
-    feature_importance["rank"] = np.arange(1, len(feature_importance) + 1)
+        feature_importance["rank"] = np.arange(1, len(feature_importance) + 1)
 
-    # Save processed data.
-    df.to_csv(PROCESSED_DATA_DIR / "v3_processed.csv", index=False)
-    print(f"\n✓ Processed data saved to {PROCESSED_DATA_DIR}")
+        fold_metrics.to_csv(REPORT_DIR / "v3_cv_metrics_by_fold.csv", index=False)
+        metric_summary.to_csv(REPORT_DIR / "v3_cv_metric_mean_std.csv", index=False)
+        threshold_df.to_csv(REPORT_DIR / "v3_inner_threshold_details.csv", index=False)
+        topk_by_fold.to_csv(REPORT_DIR / "v3_top_k_by_fold.csv", index=False)
+        topk_global.to_csv(REPORT_DIR / "v3_top_k_global_oof.csv", index=False)
+        feature_importance.to_csv(REPORT_DIR / "v3_feature_importance.csv", index=False)
+        preds_all_sorted.to_csv(REPORT_DIR / "v3_oof_predictions_all_repeats_ranked.csv")
+        pred_mean.to_csv(REPORT_DIR / "v3_oof_predictions_mean_ranked.csv")
 
-    # Save outputs
-    fold_metrics.to_csv(REPORT_DIR / "v3_cv_metrics_by_fold.csv", index=False)
-    metric_summary.to_csv(REPORT_DIR / "v3_cv_metric_mean_std.csv", index=False)
-    threshold_df.to_csv(REPORT_DIR / "v3_inner_threshold_details.csv", index=False)
-    topk_by_fold.to_csv(REPORT_DIR / "v3_top_k_by_fold.csv", index=False)
-    topk_global.to_csv(REPORT_DIR / "v3_top_k_global_oof.csv", index=False)
-    feature_importance.to_csv(REPORT_DIR / "v3_feature_importance.csv", index=False)
-    preds_all_sorted.to_csv(REPORT_DIR / "v3_oof_predictions_all_repeats_ranked.csv")
-    pred_mean.to_csv(REPORT_DIR / "v3_oof_predictions_mean_ranked.csv")
+        with open(REPORT_DIR / "v3_global_metrics.json", "w") as f:
+            json.dump(global_metrics, f, indent=2)
 
-    with open(REPORT_DIR / "v3_global_metrics.json", "w") as f:
-        json.dump(global_metrics, f, indent=2)
+        pd.DataFrame([global_metrics]).to_csv(REPORT_DIR / "v3_global_metrics.csv", index=False)
 
-    pd.DataFrame([global_metrics]).to_csv(REPORT_DIR / "v3_global_metrics.csv", index=False)
+        save_graphs(y_global, probs_global, global_metrics, feature_importance)
 
-    save_graphs(y_global, probs_global, global_metrics, feature_importance)
+        report_lines = [
+            "=" * 76,
+            f"ISIC 2024 — V3 Repeated Patient-Group CV Balanced Bagging ({ratio}:1 Ratio)",
+            "=" * 76,
+            "",
+            "DATASET",
+            f"  Total rows         : {len(df):,}",
+            f"  Benign             : {(df['malignant'] == 0).sum():,}",
+            f"  Malignant          : {df['malignant'].sum():,}",
+            f"  Patient-group CV   : {'patient_id' in df.columns}",
+            "",
+            "MODEL",
+            f"  CV design          : {N_SPLITS} folds x {N_REPEATS} repeat(s)",
+            f"  Algorithm          : LightGBM balanced undersampling ensemble",
+            f"  Bags per fold      : {N_BAGS}",
+            f"  Benign ratio/bag   : {ratio}:1",
+            f"  Estimators/bag     : {N_ESTIMATORS}",
+            f"  Original features  : {len(feature_cols)} non-ID metadata + engineered features",
+            "",
+            "THRESHOLD POLICY",
+            "  Thresholds for fold-level classification were selected from inner validation,",
+            "  not from the outer held-out test fold.",
+            f"  Inner target recall: {THRESHOLD_TARGET_RECALL:.2f}",
+            f"  Global report threshold: median inner threshold = {threshold_global:.6f}",
+            "",
+            "GLOBAL OUT-OF-FOLD METRICS",
+            f"  PR-AUC             : {global_metrics['pr_auc']:.6f}",
+            f"  ROC-AUC            : {global_metrics['roc_auc']:.6f}",
+            f"  F1                 : {global_metrics['f1']:.6f}",
+            f"  Precision          : {global_metrics['precision']:.6f}",
+            f"  Recall             : {global_metrics['recall']:.6f}",
+            f"  Confusion matrix   : TP={global_metrics['tp']}, FP={global_metrics['fp']}, FN={global_metrics['fn']}, TN={global_metrics['tn']}",
+            "",
+            "MEAN ± STD ACROSS OUTER FOLDS",
+            metric_summary.to_string(index=False),
+            "",
+            "GLOBAL TOP-K OUT-OF-FOLD RECALL",
+            topk_global.to_string(index=False),
+            "",
+            "TOP 20 FEATURES",
+            feature_importance.head(20)[["rank", "feature", "importance", "importance_std"]].to_string(index=False),
+            "",
+            "OUTPUT FILES",
+            f"  {PROCESSED_DATA_DIR / 'v3_processed.csv'}",
+            f"  {REPORT_DIR / 'v3_global_metrics.csv'}",
+            f"  {REPORT_DIR / 'v3_cv_metrics_by_fold.csv'}",
+            f"  {REPORT_DIR / 'v3_cv_metric_mean_std.csv'}",
+            f"  {REPORT_DIR / 'v3_top_k_global_oof.csv'}",
+            f"  {REPORT_DIR / 'v3_feature_importance.csv'}",
+            f"  {REPORT_DIR / 'v3_oof_predictions_mean_ranked.csv'}",
+            f"  {GRAPH_DIR / 'v3_oof_precision_recall_curve.png'}",
+            f"  {GRAPH_DIR / 'v3_oof_confusion_matrix.png'}",
+            f"  {GRAPH_DIR / 'v3_feature_importance.png'}",
+        ]
 
-    report_lines = [
-        "=" * 76,
-        "ISIC 2024 — V3 Repeated Patient-Group CV Balanced Bagging",
-        "=" * 76,
-        "",
-        "DATASET",
-        f"  Total rows         : {len(df):,}",
-        f"  Benign             : {(df['malignant'] == 0).sum():,}",
-        f"  Malignant          : {df['malignant'].sum():,}",
-        f"  Patient-group CV   : {'patient_id' in df.columns}",
-        "",
-        "MODEL",
-        f"  CV design          : {N_SPLITS} folds x {N_REPEATS} repeat(s)",
-        f"  Algorithm          : LightGBM balanced undersampling ensemble",
-        f"  Bags per fold      : {N_BAGS}",
-        f"  Benign ratio/bag   : {BENIGN_TO_MALIGNANT_RATIO}:1",
-        f"  Estimators/bag     : {N_ESTIMATORS}",
-        f"  Original features  : {len(feature_cols)} non-ID metadata + engineered features",
-        "",
-        "THRESHOLD POLICY",
-        "  Thresholds for fold-level classification were selected from inner validation,",
-        "  not from the outer held-out test fold.",
-        f"  Inner target recall: {THRESHOLD_TARGET_RECALL:.2f}",
-        f"  Global report threshold: median inner threshold = {threshold_global:.6f}",
-        "",
-        "GLOBAL OUT-OF-FOLD METRICS",
-        f"  PR-AUC             : {global_metrics['pr_auc']:.6f}",
-        f"  ROC-AUC            : {global_metrics['roc_auc']:.6f}",
-        f"  F1                 : {global_metrics['f1']:.6f}",
-        f"  Precision          : {global_metrics['precision']:.6f}",
-        f"  Recall             : {global_metrics['recall']:.6f}",
-        f"  Confusion matrix   : TP={global_metrics['tp']}, FP={global_metrics['fp']}, FN={global_metrics['fn']}, TN={global_metrics['tn']}",
-        "",
-        "MEAN ± STD ACROSS OUTER FOLDS",
-        metric_summary.to_string(index=False),
-        "",
-        "GLOBAL TOP-K OUT-OF-FOLD RECALL",
-        topk_global.to_string(index=False),
-        "",
-        "TOP 20 FEATURES",
-        feature_importance.head(20)[["rank", "feature", "importance", "importance_std"]].to_string(index=False),
-        "",
-        "OUTPUT FILES",
-        f"  {PROCESSED_DATA_DIR / 'v3_processed.csv'}",
-        f"  {REPORT_DIR / 'v3_global_metrics.csv'}",
-        f"  {REPORT_DIR / 'v3_cv_metrics_by_fold.csv'}",
-        f"  {REPORT_DIR / 'v3_cv_metric_mean_std.csv'}",
-        f"  {REPORT_DIR / 'v3_top_k_global_oof.csv'}",
-        f"  {REPORT_DIR / 'v3_feature_importance.csv'}",
-        f"  {REPORT_DIR / 'v3_oof_predictions_mean_ranked.csv'}",
-        f"  {GRAPH_DIR / 'v3_oof_precision_recall_curve.png'}",
-        f"  {GRAPH_DIR / 'v3_oof_confusion_matrix.png'}",
-        f"  {GRAPH_DIR / 'v3_feature_importance.png'}",
-    ]
+        report_text = "\n".join(report_lines)
+        with open(REPORT_DIR / "v3_readable_report.txt", "w") as f:
+            f.write(report_text)
 
-    report_text = "\n".join(report_lines)
-    with open(REPORT_DIR / "v3_readable_report.txt", "w") as f:
-        f.write(report_text)
+        print("\n" + report_text)
 
-    print("\n" + report_text)
-    print(f"\nDone. Total elapsed: {time.time() - t0:.1f}s")
+        print(f"\n{'='*76}")
+        print(f"RATIO {ratio}:1 COMPLETE  |  Output: {OUTPUT_DIR}")
+        print(f"{'='*76}")
+
+    print(f"\nCompleted {len(RATIOS)} ratio run(s): {RATIOS}")
+    print(f"Done. Total elapsed: {time.time() - t0:.1f}s")
 
 
 if __name__ == "__main__":
