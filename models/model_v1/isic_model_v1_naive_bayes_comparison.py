@@ -1,5 +1,5 @@
 """
-ISIC 2024 — V5: Range-Based Malignant Similarity Model (Naive Bayes)
+ISIC 2024 — v1: Range-Based Malignant Similarity Model (Naive Bayes)
 
 Trains TWO Naive Bayes variants for comparison:
   1. GaussianNB     — on raw continuous features
@@ -105,7 +105,7 @@ def evaluate(name, y_true, y_pred, y_proba):
 
 def main():
     print("=" * 80)
-    print("V5: Range-Based Similarity — Naive Bayes Comparison (Gaussian vs Categorical)")
+    print("v1: Range-Based Similarity — Naive Bayes Comparison (Gaussian vs Categorical)")
     print("=" * 80)
 
     df = pd.read_csv(str(_DATASETS / "datasetv4_merged_cleaned_engineered.csv"))
@@ -209,9 +209,9 @@ def main():
 
     # Save datasets
     pd.concat([Xc_tr, y_tr], axis=1).to_csv(
-        f'{OUTPUT_DATASETS}/v5_train_benign_similarity.csv', index=False)
+        f'{OUTPUT_DATASETS}/v1_train_benign_similarity.csv', index=False)
     pd.concat([Xc_te, y_te], axis=1).to_csv(
-        f'{OUTPUT_DATASETS}/v5_test_benign_similarity.csv', index=False)
+        f'{OUTPUT_DATASETS}/v1_test_benign_similarity.csv', index=False)
 
     # Step 10: train both models
     print("\n[Step 10] Training Naive Bayes models...")
@@ -253,10 +253,10 @@ def main():
         'gnb_pred': gnb_pred, 'gnb_proba': gnb_proba,
         'cnb_pred': cnb_pred, 'cnb_proba': cnb_proba,
     }).sort_values('cnb_proba', ascending=False).to_csv(
-        f'{OUTPUT_REPORTS}/v5_naive_bayes_predictions.csv', index=False)
+        f'{OUTPUT_REPORTS}/v1_naive_bayes_predictions.csv', index=False)
 
     # Metrics JSON
-    with open(f'{OUTPUT_REPORTS}/v5_global_metrics.json', 'w') as f:
+    with open(f'{OUTPUT_REPORTS}/v1_global_metrics.json', 'w') as f:
         json.dump({
             'gaussian_nb': gnb_metrics,
             'categorical_nb': cnb_metrics,
@@ -270,7 +270,7 @@ def main():
 
     # Readable report
     report = f"""================================================================================
-ISIC 2024 — V5 Naive Bayes Comparison: IQR-Based Malignant Similarity
+ISIC 2024 — v1 Naive Bayes Comparison: IQR-Based Malignant Similarity
 ================================================================================
 
 CONCEPT
@@ -311,7 +311,7 @@ MALIGNANT IQR REFERENCE WINDOWS (Q1–Q3 of 393 malignant records)
         report += f"  {f:32s}   {q1:>10.4f}  {q3:>10.4f}\n"
 
     report += "\n" + "=" * 80 + "\n"
-    with open(f'{OUTPUT_REPORTS}/v5_readable_report.txt', 'w') as f:
+    with open(f'{OUTPUT_REPORTS}/v1_readable_report.txt', 'w') as f:
         f.write(report)
 
     # Step 13: visualizations
@@ -404,12 +404,12 @@ MALIGNANT IQR REFERENCE WINDOWS (Q1–Q3 of 393 malignant records)
     plt.close()
 
     print("\n" + "=" * 80)
-    print("V5 NAIVE BAYES PIPELINE COMPLETE")
+    print("v1 NAIVE BAYES PIPELINE COMPLETE")
     print("=" * 80)
-    print(f"\n  Models:   {OUTPUT_RESULTS}/v5_gaussian_nb.joblib")
-    print(f"            {OUTPUT_RESULTS}/v5_categorical_nb.joblib")
-    print(f"  Report:   {OUTPUT_REPORTS}/v5_readable_report.txt")
-    print(f"  Metrics:  {OUTPUT_REPORTS}/v5_global_metrics.json")
+    print(f"\n  Models:   {OUTPUT_RESULTS}/v1_gaussian_nb.joblib")
+    print(f"            {OUTPUT_RESULTS}/v1_categorical_nb.joblib")
+    print(f"  Report:   {OUTPUT_REPORTS}/v1_readable_report.txt")
+    print(f"  Metrics:  {OUTPUT_REPORTS}/v1_global_metrics.json")
     print(f"  Graphs:   {OUTPUT_RESULT_GRAPHS}/ (6 comparison graphs)")
     print(f"  Features: {OUTPUT_GRAPHS}/ ({len(FEATURE_RANGES)*2} graphs)")
     print(f"\n  Winner by F1: "

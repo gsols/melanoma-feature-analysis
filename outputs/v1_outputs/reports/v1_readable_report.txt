@@ -1,5 +1,5 @@
 ================================================================================
-ISIC 2024 — V5 Naive Bayes Comparison: IQR-Based Malignant Similarity
+ISIC 2024 — v1 Naive Bayes Comparison: IQR-Based Malignant Similarity
 ================================================================================
 
 CONCEPT
