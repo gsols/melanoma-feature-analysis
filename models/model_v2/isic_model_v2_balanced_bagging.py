@@ -41,7 +41,7 @@ from sklearn.metrics import (
     confusion_matrix,
     ConfusionMatrixDisplay,
 )
-from sklearn.model_selection import StratifiedGroupKFold, train_test_split
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 from lightgbm import LGBMClassifier
@@ -55,12 +55,12 @@ _HERE = Path(__file__).resolve().parent
 # =============================================================================
 
 DATA_DIR = Path(os.getenv("DATA_DIR", str((_HERE / "../../datasets").resolve())))
-METADATA_FILE = DATA_DIR / "metadata.csv"
-LABELS_FILE = DATA_DIR / "labels.csv"
+DATASET_FILE = DATA_DIR / "datasetv3_raw_metadata_labels_merged.csv"
 
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str((_HERE / "../../outputs/v2_outputs").resolve())))
 REPORT_DIR = OUTPUT_DIR / "reports"
 GRAPH_DIR = OUTPUT_DIR / "graphs"
+PROCESSED_DATA_DIR = _HERE / "processed_data"
 
 RANDOM_STATE = int(os.getenv("RANDOM_STATE", "42"))
 TEST_SIZE = float(os.getenv("TEST_SIZE", "0.20"))
@@ -69,9 +69,6 @@ TEST_SIZE = float(os.getenv("TEST_SIZE", "0.20"))
 N_BAGS = int(os.getenv("N_BAGS", "30"))
 BENIGN_TO_MALIGNANT_RATIO = int(os.getenv("BENIGN_RATIO", "5"))  # try 5, 10, 20
 N_ESTIMATORS = int(os.getenv("N_ESTIMATORS", "200"))
-
-# Use patient-level split when possible to reduce patient leakage.
-USE_PATIENT_GROUP_SPLIT = os.getenv("USE_PATIENT_GROUP_SPLIT", "1") == "1"
 
 # LightGBM settings tuned for small balanced bags, not the full 400k:393 ratio.
 LGBM_PARAMS = {
@@ -98,6 +95,24 @@ ID_COLS_TO_KEEP_IN_OUTPUT = ["isic_id", "patient_id"]
 TOP_K_VALUES = [100, 500, 1000, 5000]
 TARGET_RECALLS = [0.70, 0.80, 0.90]
 
+# Same clip ranges used by data_preprocessing_pipeline.py to produce datasetv4.
+CLIP_RANGES = {
+    "age_approx":              (0,   85),
+    "clin_size_long_diam_mm":  (0,  150),
+    "tbp_lv_nevi_confidence":  (0,  100),
+    "tbp_lv_eccentricity":     (0,    1),
+    "tbp_lv_symm_2axis":       (0,    1),
+    "tbp_lv_norm_border":      (0,   10),
+    "tbp_lv_norm_color":       (0,   10),
+    "tbp_lv_area_perim_ratio": (0,  100),
+    "tbp_lv_areaMM2":          (0, 5000),
+    "tbp_lv_perimeterMM":      (0,  500),
+    "tbp_lv_minorAxisMM":      (0,  100),
+}
+
+_CAT_COLS_FOR_IMPUTE = ["sex", "anatom_site_general", "tbp_lv_location",
+                        "tbp_lv_location_simple", "image_type", "tbp_tile_type"]
+
 
 # =============================================================================
 # HELPERS
@@ -106,6 +121,7 @@ TARGET_RECALLS = [0.70, 0.80, 0.90]
 def make_dirs() -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     GRAPH_DIR.mkdir(parents=True, exist_ok=True)
+    PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def make_ohe() -> OneHotEncoder:
@@ -117,7 +133,6 @@ def make_ohe() -> OneHotEncoder:
 
 
 def add_engineered_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add the previous engineered features while keeping the original TBP columns."""
     df = df.copy()
     eps = 1e-6
 
@@ -128,60 +143,59 @@ def add_engineered_features(df: pd.DataFrame) -> pd.DataFrame:
         df["color_contrast_3d"] = np.sqrt(
             df["tbp_lv_deltaA"] ** 2 + df["tbp_lv_deltaB"] ** 2 + df["tbp_lv_deltaL"] ** 2
         )
-
     if has("clin_size_long_diam_mm", "tbp_lv_minorAxisMM"):
         df["elongation"] = df["clin_size_long_diam_mm"] / (df["tbp_lv_minorAxisMM"] + eps)
-
     if has("tbp_lv_nevi_confidence", "tbp_lv_color_std_mean"):
         df["nevi_color_tension"] = df["tbp_lv_nevi_confidence"] - df["tbp_lv_color_std_mean"]
-
     if has("tbp_lv_areaMM2"):
         df["log_area"] = np.log1p(df["tbp_lv_areaMM2"])
-
     if has("tbp_lv_stdL", "tbp_lv_stdLExt"):
         df["stdL_ratio"] = df["tbp_lv_stdL"] / (df["tbp_lv_stdLExt"] + eps)
-
     if has("tbp_lv_areaMM2", "tbp_lv_perimeterMM"):
         df["compactness"] = 4 * np.pi * df["tbp_lv_areaMM2"] / (df["tbp_lv_perimeterMM"] ** 2 + eps)
-
     if has("tbp_lv_C", "tbp_lv_Cext"):
         df["chroma_contrast"] = df["tbp_lv_C"] - df["tbp_lv_Cext"]
-
     if has("tbp_lv_radial_color_std_max", "tbp_lv_color_std_mean"):
         df["radial_color_ratio"] = df["tbp_lv_radial_color_std_max"] / (
             df["tbp_lv_color_std_mean"] + eps
         )
-
     return df
 
 
 def load_data() -> pd.DataFrame:
-    if not METADATA_FILE.exists():
-        raise FileNotFoundError(f"Missing {METADATA_FILE}")
-    if not LABELS_FILE.exists():
-        raise FileNotFoundError(f"Missing {LABELS_FILE}")
+    if not DATASET_FILE.exists():
+        raise FileNotFoundError(f"Missing {DATASET_FILE}")
 
-    metadata = pd.read_csv(METADATA_FILE)
-    labels = pd.read_csv(LABELS_FILE)
-    df = metadata.merge(labels, on="isic_id", how="inner")
+    df = pd.read_csv(DATASET_FILE)
     df["malignant"] = df["malignant"].astype(int)
+
+    # Step 1: impute — same strategy as data_preprocessing_pipeline.py
+    cat_src = [c for c in _CAT_COLS_FOR_IMPUTE if c in df.columns]
+    num_src = [
+        c for c in df.columns
+        if c not in cat_src + ["isic_id", "patient_id", "malignant"]
+        and pd.api.types.is_numeric_dtype(df[c])
+    ]
+    if num_src:
+        df[num_src] = SimpleImputer(strategy="median").fit_transform(df[num_src])
+    if cat_src:
+        df[cat_src] = SimpleImputer(strategy="most_frequent").fit_transform(df[cat_src])
+
+    # Step 2: clip outliers — same ranges as data_preprocessing_pipeline.py
+    for col, (lo, hi) in CLIP_RANGES.items():
+        if col in df.columns:
+            df[col] = df[col].clip(lo, hi)
+
+    # Step 3: engineer features using the same formulas as data_preprocessing_pipeline.py
     df = add_engineered_features(df)
     return df
 
 
 def split_train_test(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     y = df["malignant"].values
-
-    if USE_PATIENT_GROUP_SPLIT and "patient_id" in df.columns:
-        # 5 folds approximates an 80/20 train/test split.
-        groups = df["patient_id"].fillna("missing_patient").astype(str).values
-        sgkf = StratifiedGroupKFold(n_splits=int(round(1 / TEST_SIZE)), shuffle=True, random_state=RANDOM_STATE)
-        train_idx, test_idx = next(sgkf.split(df, y, groups))
-    else:
-        train_idx, test_idx = train_test_split(
-            np.arange(len(df)), test_size=TEST_SIZE, stratify=y, random_state=RANDOM_STATE
-        )
-
+    train_idx, test_idx = train_test_split(
+        np.arange(len(df)), test_size=TEST_SIZE, stratify=y, random_state=RANDOM_STATE
+    )
     train_df = df.iloc[train_idx].reset_index(drop=True)
     test_df = df.iloc[test_idx].reset_index(drop=True)
     return train_df, test_df
@@ -413,7 +427,12 @@ def main() -> None:
     }).sort_values("importance", ascending=False).reset_index(drop=True)
     importance["rank"] = np.arange(1, len(importance) + 1)
 
-    # Save predictions with useful ID columns if available.
+    # Save train/test splits to processed_data folder.
+    train_df.to_csv(PROCESSED_DATA_DIR / "v2_train.csv", index=False)
+    test_df.to_csv(PROCESSED_DATA_DIR / "v2_test.csv", index=False)
+    print(f"\n✓ Train/test splits saved to {PROCESSED_DATA_DIR}")
+
+    # Save predictions with ID columns if available.
     output_cols = [c for c in ID_COLS_TO_KEEP_IN_OUTPUT if c in test_df.columns]
     output_cols += ["malignant"]
     pred_out = test_df[output_cols].copy()
@@ -448,7 +467,7 @@ def main() -> None:
         f"  Test rows         : {len(test_df):,}",
         f"  Test malignant    : {int(y_test.sum()):,}",
         f"  Test benign       : {int((y_test == 0).sum()):,}",
-        f"  Patient group split: {USE_PATIENT_GROUP_SPLIT}",
+        f"  Split strategy     : stratified random (80/20)",
         "",
         "MODEL",
         f"  Algorithm         : LightGBM balanced undersampling ensemble",
