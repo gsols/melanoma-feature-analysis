@@ -61,12 +61,12 @@ RANDOM_STATE = 42
 TEST_SIZE = 0.2
 
 _HERE              = Path(__file__).resolve().parent
-_V5_OUTPUTS        = (_HERE / '../../outputs/v5_outputs').resolve()
+_V1_OUTPUTS        = (_HERE / '../../outputs/v1_outputs').resolve()
 _DATASETS          = (_HERE / '../../datasets').resolve()
-OUTPUT_GRAPHS      = str(_V5_OUTPUTS / 'graphs')
-OUTPUT_RESULTS     = str(_V5_OUTPUTS)
-OUTPUT_REPORTS     = str(_V5_OUTPUTS / 'reports')
-OUTPUT_RESULT_GRAPHS = str(_V5_OUTPUTS / 'graphs')
+OUTPUT_GRAPHS      = str(_V1_OUTPUTS / 'graphs')
+OUTPUT_RESULTS     = str(_V1_OUTPUTS)
+OUTPUT_REPORTS     = str(_V1_OUTPUTS / 'reports')
+OUTPUT_RESULT_GRAPHS = str(_V1_OUTPUTS / 'graphs')
 OUTPUT_DATASETS    = str(_HERE / 'processed_data')
 
 
@@ -108,7 +108,7 @@ def main():
     print("V5: Range-Based Similarity — Naive Bayes Comparison (Gaussian vs Categorical)")
     print("=" * 80)
 
-    df = pd.read_csv(str(_DATASETS / "merged_cleaned.csv"))
+    df = pd.read_csv(str(_DATASETS / "datasetv4_merged_cleaned_engineered.csv"))
     print(f"\n✓ Loaded {len(df):,} records (Malignant: {df['malignant'].sum():,}, "
           f"Benign: {(1-df['malignant']).sum():,})")
 
@@ -246,24 +246,6 @@ def main():
     os.makedirs(OUTPUT_RESULTS, exist_ok=True)
     os.makedirs(OUTPUT_REPORTS, exist_ok=True)
     os.makedirs(OUTPUT_RESULT_GRAPHS, exist_ok=True)
-
-    # Save both models
-    joblib.dump({
-        'model': gnb, 'features': model_features,
-        'malignant_iqr': malignant_iqr,
-        'feature_ranges': FEATURE_RANGES,
-        'similarity_threshold': SIMILARITY_THRESHOLD,
-        'model_type': 'GaussianNB',
-    }, f'{OUTPUT_RESULTS}/v5_gaussian_nb.joblib')
-
-    joblib.dump({
-        'model': cnb, 'features': range_cols,
-        'encoder': encoder,
-        'malignant_iqr': malignant_iqr,
-        'feature_ranges': FEATURE_RANGES,
-        'similarity_threshold': SIMILARITY_THRESHOLD,
-        'model_type': 'CategoricalNB',
-    }, f'{OUTPUT_RESULTS}/v5_categorical_nb.joblib')
 
     # Predictions
     pd.DataFrame({
