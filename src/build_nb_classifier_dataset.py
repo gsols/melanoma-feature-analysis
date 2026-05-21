@@ -10,6 +10,8 @@ Steps:
   5. For every feature, generate a frequency table CSV showing how many
      records in each category are near_malignant (yes/no), plus
      conditional probabilities P(category | yes) and P(category | no).
+  6. Compile all 19 frequency tables into a single Excel workbook
+     (nb_classifier_model_v1.xlsx) with one sheet per feature.
 """
 
 import pandas as pd
@@ -149,15 +151,33 @@ def main():
     print(f"  Saved combined dataset → {out_csv.name}")
 
     # ------------------------------------------------------------------
-    # Step 5: Per-feature frequency tables
+    # Step 5: Per-feature frequency tables (CSV) + collect for xlsx
     # ------------------------------------------------------------------
     print("Building per-feature frequency tables...")
+    tables = {}
     for feature in FEATURE_RANGES:
         title = FEATURE_TITLES[feature]
         table = build_frequency_table(df, feature)
         out_name = f"{feature}_{title}_near_malignant_counts.csv"
         table.to_csv(_OUT / out_name, index=False)
         print(f"  Saved → {out_name}")
+        tables[feature] = (title, table)
+
+    # ------------------------------------------------------------------
+    # Step 6: Compile all tables into a single Excel workbook
+    # ------------------------------------------------------------------
+    xlsx_path = _OUT / "nb_classifier_model_v1.xlsx"
+    print(f"\nCompiling Excel workbook → {xlsx_path.name}")
+    with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:
+        for feature, (title, table) in tables.items():
+            sheet_name = f"{feature[:20]}_{title[:10]}"[:31]
+            table.to_excel(writer, sheet_name=sheet_name, index=False)
+            ws = writer.sheets[sheet_name]
+            # widen first column to fit category labels
+            ws.column_dimensions["A"].width = 18
+            for col in ["B", "C", "D", "E"]:
+                ws.column_dimensions[col].width = 14
+    print(f"  Saved {len(tables)} sheets → {xlsx_path.name}")
 
     print(f"\nDone. All outputs saved to: {_OUT}")
 
