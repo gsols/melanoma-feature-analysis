@@ -257,12 +257,12 @@ STEP-BY-STEP ENVIRONMENT SETUP
     pip install -r requirements.txt
 
     This installs all libraries listed in requirements.txt, including
-    scikit-learn, pandas, numpy, matplotlib, seaborn, and lightgbm.
+    scikit-learn, pandas, numpy, matplotlib, seaborn, openpyxl, and lightgbm.
     This may take a few minutes the first time.
 
   Step 5. Verify the installation (optional but recommended).
 
-    python -c "import sklearn, pandas, numpy, matplotlib, lightgbm; print('All packages OK')"
+    python -c "import sklearn, pandas, numpy, matplotlib, lightgbm, openpyxl; print('All packages OK')"
 
     You should see: All packages OK
 
@@ -525,6 +525,10 @@ HOW TO RUN
   Or pass ratios inline without editing the file:
     RATIOS=5,10 bash run_model_v2.sh
 
+  Or edit the default fallback directly in the Python file (line ~65):
+    RATIOS = [int(r) for r in os.getenv("RATIOS", "5,10,20").split(",")]
+                                                    ↑ change this string
+
 OUTPUTS
   For each ratio, a separate output folder is created:
     outputs/v2_outputs/v2_outputs_ratio5_1/
@@ -567,6 +571,10 @@ HOW TO RUN
 
   Custom ratios — edit run_model_v3.sh:
     RATIOS="${RATIOS:-5,10,20}"   ← change as desired
+
+  Or edit the default fallback directly in the Python file (line ~74):
+    RATIOS = [int(r) for r in os.getenv("RATIOS", "5,10,20").split(",")]
+                                                    ↑ change this string
 
 OUTPUTS
   Structured identically to V2:
@@ -611,6 +619,10 @@ HOW TO RUN
 
   Custom ratios — edit run_model_v4.sh:
     RATIOS="${RATIOS:-5,10,15,20,25,30,500,600,700,1000}"   ← change as desired
+
+  Or edit the default fallback directly in the Python file (line ~75):
+    RATIOS = [int(r) for r in os.getenv("RATIOS", "5,10,15,20,25,30,500,600,700,1000").split(",")]
+                                                    ↑ change this string
 
   Example for just a few ratios:
     RATIOS=5,10,20 bash run_model_v4.sh
