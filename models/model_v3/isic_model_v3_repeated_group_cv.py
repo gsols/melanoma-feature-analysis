@@ -71,7 +71,7 @@ N_REPEATS = int(os.getenv("N_REPEATS", "1"))
 
 # Balanced bagging settings
 N_BAGS = int(os.getenv("N_BAGS", "30"))
-RATIOS = [5, 10, 20]
+RATIOS = [int(r) for r in os.getenv("RATIOS", "5,10,20").split(",")]
 N_ESTIMATORS = int(os.getenv("N_ESTIMATORS", "200"))
 
 # Per-ratio dirs — updated inside the main() loop

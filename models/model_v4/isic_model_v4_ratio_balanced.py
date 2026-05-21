@@ -72,7 +72,7 @@ INPUT_DATA = str((_HERE / '../../datasets/datasetv4_merged_cleaned_engineered.cs
 PROCESSED_DATA_DIR = str(_HERE / 'processed_data')
 
 # Ratios to run (benign:malignant) — each ratio generates its own output folder
-RATIOS = [5, 10, 15, 20, 25, 30, 500, 600, 700, 1000]
+RATIOS = [int(r) for r in os.getenv("RATIOS", "5,10,15,20,25,30,500,600,700,1000").split(",")]
 
 # Data prep settings
 TEST_SIZE         = 0.20
