@@ -16,7 +16,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-_HERE    = Path(__file__).resolve().parent
+_HERE    = Path(__file__).resolve().parent.parent
 DATASETS = _HERE / "datasets"
 
 RAW_METADATA = DATASETS / "datasetv1_raw_metadata.csv"
