@@ -1,0 +1,801 @@
+================================================================================
+MELANOMA FEATURE ANALYSIS — PROJECT DOCUMENTATION
+ISIC 2024 Metadata-Based Malignancy Risk System
+================================================================================
+
+TABLE OF CONTENTS
+  1. Project Overview
+  2. What This System Does
+  3. Project Structure
+  4. Dataset Pipeline
+  5. Prerequisites and Environment Setup
+  6. Step-by-Step: Running the Full Pipeline
+  7. Model V1 — Naive Bayes Comparison (Main Model)
+  8. Manual Naive Bayes Classifier (nb_classifier_model_v1)
+  9. Model V2 — Balanced Bagging (Comparative)
+ 10. Model V3 — Repeated Patient-Group CV (Comparative)
+ 11. Model V4 — LightGBM Ratio-Balanced (Experimental)
+ 12. Understanding the Outputs
+ 13. Feature Reference
+ 14. Troubleshooting
+
+
+================================================================================
+1. PROJECT OVERVIEW
+================================================================================
+
+This project is a machine learning system built on the ISIC 2024 skin lesion
+metadata dataset. Its central question is:
+
+  "How closely does a confirmed benign lesion resemble a known malignant
+   melanoma?"
+
+Rather than simply classifying lesions as benign or malignant, the system
+assigns every benign lesion record a MALIGNANCY RISK PROBABILITY — a score
+between 0 and 1 that describes how much that benign lesion looks like a
+confirmed case of malignant melanoma, based on its measurable features.
+
+The primary model (Model V1) uses a Naive Bayes classifier. The remaining
+models (V2, V3, V4) use different machine learning techniques and serve as
+comparative benchmarks to evaluate how the Naive Bayes approach holds up.
+
+This documentation is written so that anyone — including those with no prior
+programming experience — can set up and run the system from scratch.
+
+
+================================================================================
+2. WHAT THIS SYSTEM DOES
+================================================================================
+
+CORE CONCEPT
+  The system never trains directly on malignant lesion records to produce
+  labels. Instead, it uses confirmed malignant cases only as a REFERENCE PROFILE.
+
+  For each skin feature (e.g., lesion size, border irregularity, color
+  variation), it finds the typical range of values in malignant cases using
+  the interquartile range (IQR) — the middle 50% of values. A benign lesion
+  then receives a SIMILARITY SCORE: the fraction of its features whose values
+  fall inside those malignant reference ranges.
+
+  If a benign lesion scores 60% or higher (i.e., at least 60% of its features
+  overlap with the malignant reference ranges), it is labeled "near-malignant."
+  The Naive Bayes classifier then learns to predict this label and outputs a
+  probability for every benign record.
+
+WHAT THE OUTPUT MEANS
+  A probability of 0.90 means: this benign lesion's features match the profile
+  of confirmed malignant melanoma very closely. A probability of 0.10 means the
+  lesion looks very different from malignant cases.
+
+  This does NOT replace medical diagnosis. It is a research and screening aid.
+
+FEATURES ANALYZED (19 total)
+  - age_approx                  Patient age
+  - clin_size_long_diam_mm      Lesion diameter (mm)
+  - tbp_lv_area_perim_ratio     Area-to-perimeter ratio
+  - tbp_lv_norm_border          Border irregularity score
+  - tbp_lv_symm_2axis           Shape symmetry score
+  - tbp_lv_eccentricity         Eccentricity (how elongated the lesion is)
+  - tbp_lv_color_std_mean       Color variation (standard deviation)
+  - tbp_lv_norm_color           Normalized color score
+  - tbp_lv_deltaLBnorm          Lightness difference (lesion vs. skin)
+  - tbp_lv_radial_color_std_max Radial color variation (max)
+  - tbp_lv_nevi_confidence      Nevi (mole) confidence score
+  - color_contrast_3d           3D color contrast (engineered)
+  - elongation                  Shape elongation ratio (engineered)
+  - nevi_color_tension          Nevi confidence minus color variation (engineered)
+  - log_area                    Log-transformed lesion area (engineered)
+  - stdL_ratio                  Lightness standard deviation ratio (engineered)
+  - compactness                 Shape compactness index (engineered)
+  - chroma_contrast             Chroma (color saturation) contrast (engineered)
+  - radial_color_ratio          Ratio of radial to mean color variation (engineered)
+
+
+================================================================================
+3. PROJECT STRUCTURE
+================================================================================
+
+melanoma-feature-analysis/
+│
+├── datasets/                          Raw and processed data files
+│   ├── datasetv1_raw_metadata.csv     Original ISIC 2024 metadata (raw)
+│   ├── datasetv2_labels.csv           Malignant/benign labels per ISIC ID
+│   ├── datasetv3_raw_metadata_labels_merged.csv   Merged (all original columns)
+│   ├── datasetv4_merged_cleaned_engineered.csv    Cleaned + engineered features
+│   ├── datasetv5_cleaned_all_malignant.csv        Malignant records only
+│   └── datasetv6_cleaned_all_benign.csv           Benign records only
+│
+├── src/
+│   ├── data_preprocessing_pipeline.py  Generates datasets v3 through v6
+│   └── build_nb_classifier_dataset.py  Builds manual NB frequency tables
+│
+├── models/
+│   ├── model_v1/
+│   │   ├── isic_model_v1_naive_bayes_comparison.py   Main model script
+│   │   └── processed_data/
+│   │       ├── v1_train_benign_similarity.csv
+│   │       └── v1_test_benign_similarity.csv
+│   ├── model_v2/
+│   │   ├── isic_model_v2_balanced_bagging.py
+│   │   └── processed_data/
+│   ├── model_v3/
+│   │   ├── isic_model_v3_repeated_group_cv.py
+│   │   └── processed_data/
+│   └── model_v4/
+│       └── isic_model_v4_ratio_balanced.py
+│
+├── nb_classifier_model_v1/            Manual Naive Bayes frequency tables
+│   ├── nb_classifier_model_v1.xlsx    Combined Excel workbook (all features)
+│   └── <feature>_near_malignant_counts.csv   One CSV per feature
+│
+├── outputs/
+│   ├── v1_outputs/
+│   │   ├── graphs/
+│   │   │   ├── features/    Feature distribution charts (benign vs malignant)
+│   │   │   └── analysis/    Model performance charts
+│   │   └── reports/
+│   │       ├── v1_readable_report.txt
+│   │       ├── v1_global_metrics.json
+│   │       └── v1_naive_bayes_predictions.csv
+│   ├── v2_outputs/
+│   │   ├── v2_outputs_ratio5_1/
+│   │   ├── v2_outputs_ratio10_1/
+│   │   └── v2_outputs_ratio20_1/
+│   ├── v3_outputs/
+│   │   ├── v3_outputs_ratio5_1/
+│   │   ├── v3_outputs_ratio10_1/
+│   │   └── v3_outputs_ratio20_1/
+│   └── v4_outputs/
+│       └── v4_outputs_ratio<N>_1/    One folder per ratio tested
+│
+├── run_model_v1.sh   Run script for Model V1
+├── run_model_v2.sh   Run script for Model V2 (configurable ratios)
+├── run_model_v3.sh   Run script for Model V3 (configurable ratios)
+├── run_model_v4.sh   Run script for Model V4 (configurable ratios)
+└── requirements.txt  Python package dependencies
+
+
+================================================================================
+4. DATASET PIPELINE
+================================================================================
+
+The raw data arrives as two separate files. The pipeline processes them into
+progressively cleaner and more focused datasets.
+
+  datasetv1_raw_metadata.csv
+    The original ISIC 2024 metadata: skin lesion measurements per patient visit.
+    Contains columns for geometry, color, location, patient demographics, etc.
+
+  datasetv2_labels.csv
+    Labels (0 = benign, 1 = malignant) keyed by ISIC ID (a unique lesion code).
+
+  --- data_preprocessing_pipeline.py produces the following ---
+
+  STEP 1 → datasetv3_raw_metadata_labels_merged.csv
+    The two raw files are joined on their shared "isic_id" column. Every column
+    from both files is kept. This is the full, unmodified merged dataset.
+
+  STEP 2 → (in-memory)
+    Missing numeric values are filled with column medians. Missing categorical
+    values (sex, body site, location) are filled with the most common value.
+
+  STEP 3 → (in-memory)
+    Extreme outliers are clipped to safe ranges for each numeric column
+    (e.g., age capped at 85, lesion diameter capped at 150 mm).
+
+  STEP 4 → (in-memory)
+    Eight new features are engineered from existing columns:
+      color_contrast_3d, elongation, nevi_color_tension, log_area,
+      stdL_ratio, compactness, chroma_contrast, radial_color_ratio.
+
+  STEP 5 → datasetv4_merged_cleaned_engineered.csv
+    Only the 22 most informative columns are kept (19 numeric features +
+    sex, anatomy site, location, and the malignant label). This is the
+    primary dataset used by all models.
+
+  STEP 6 → datasetv5_cleaned_all_malignant.csv
+    Rows where malignant = 1 only. Used as the reference profile in V1.
+
+  STEP 7 → datasetv6_cleaned_all_benign.csv
+    Rows where malignant = 0 only. Used as training targets in V1.
+
+
+================================================================================
+5. PREREQUISITES AND ENVIRONMENT SETUP
+================================================================================
+
+WHAT YOU NEED INSTALLED
+  - Python 3.10 or newer
+  - pip (Python package installer, bundled with Python)
+  - bash (the terminal shell)
+    * On Linux/macOS: already available
+    * On Windows: use Git Bash, WSL, or any bash-compatible shell
+
+TO CHECK IF PYTHON IS INSTALLED
+  Open your terminal and type:
+    python --version
+  or
+    python3 --version
+
+  You should see something like: Python 3.11.x
+  If not, download Python from: https://www.python.org/downloads/
+
+STEP-BY-STEP ENVIRONMENT SETUP
+
+  Step 1. Open a terminal and navigate to the project folder.
+
+    cd /path/to/melanoma-feature-analysis
+
+    (Replace /path/to/ with the actual location on your computer.)
+
+  Step 2. Create a virtual environment.
+
+    A virtual environment keeps the project's Python packages isolated from
+    the rest of your system so nothing conflicts.
+
+    python -m venv .venv
+
+    This creates a hidden folder named ".venv" inside the project directory.
+
+  Step 3. Activate the virtual environment.
+
+    On Linux or macOS:
+      source .venv/bin/activate
+
+    On Windows (Git Bash):
+      source .venv/Scripts/activate
+
+    On Windows (Command Prompt):
+      .venv\Scripts\activate.bat
+
+    When activated, your terminal prompt will show (.venv) at the start.
+    You must activate the environment EVERY TIME you open a new terminal
+    before running any scripts.
+
+  Step 4. Install the required Python packages.
+
+    pip install -r requirements.txt
+
+    This installs all libraries listed in requirements.txt, including
+    scikit-learn, pandas, numpy, matplotlib, seaborn, openpyxl, and lightgbm.
+    This may take a few minutes the first time.
+
+  Step 5. Verify the installation (optional but recommended).
+
+    python -c "import sklearn, pandas, numpy, matplotlib, lightgbm, openpyxl; print('All packages OK')"
+
+    You should see: All packages OK
+
+REQUIRED DATA FILES
+  Before running any model, confirm the following two files exist in datasets/:
+    - datasetv1_raw_metadata.csv
+    - datasetv2_labels.csv
+
+  All other dataset files (v3 through v6) are generated automatically by the
+  preprocessing pipeline.
+
+
+================================================================================
+6. STEP-BY-STEP: RUNNING THE FULL PIPELINE
+================================================================================
+
+Follow these steps in order if running the project for the first time, or if
+you need to regenerate all data and outputs from scratch.
+
+  STEP A — Set up the environment (see Section 5 above)
+
+  STEP B — Activate the virtual environment
+
+    source .venv/bin/activate
+
+  STEP C — Generate the processed datasets (run once)
+
+    python src/data_preprocessing_pipeline.py
+
+    This reads datasetv1 and datasetv2, then produces datasetv3 through
+    datasetv6 in the datasets/ folder. You will see step-by-step progress
+    printed to the terminal.
+
+    Expected output (approximate):
+      STEP 1 — Merging datasetv1_raw_metadata with datasetv2_labels
+        Raw metadata : 401,059 rows x N cols
+        Labels       : 401,059 rows x 2 cols
+        Merged       : 401,059 rows x N cols
+        ...
+      DONE
+        datasetv4_merged_cleaned_engineered.csv : 401,059 rows x 22 cols
+        datasetv5_cleaned_all_malignant.csv     : 393 rows
+        datasetv6_cleaned_all_benign.csv        : 400,666 rows
+
+  STEP D — Run Model V1 (main model)
+
+    bash run_model_v1.sh
+
+    This is the primary model. It trains both Gaussian and Categorical
+    Naive Bayes classifiers and produces all outputs for V1.
+    See Section 7 for details.
+
+  STEP E — Generate the manual Naive Bayes frequency tables (optional)
+
+    python src/build_nb_classifier_dataset.py
+
+    This produces the per-feature CSV frequency tables and the Excel workbook
+    in nb_classifier_model_v1/. Run this AFTER model V1 (step D), because
+    it reads the processed train/test CSVs that V1 produces.
+    See Section 8 for details.
+
+  STEP F — Run comparative models (optional)
+
+    bash run_model_v2.sh
+    bash run_model_v3.sh
+    bash run_model_v4.sh
+
+    These can be run in any order, independently of each other.
+    They do not depend on Model V1 output — only on datasetv4.
+    See Sections 9, 10, and 11 for details on each.
+
+
+================================================================================
+7. MODEL V1 — NAIVE BAYES COMPARISON (MAIN MODEL)
+================================================================================
+
+FILE:    models/model_v1/isic_model_v1_naive_bayes_comparison.py
+RUNNER:  run_model_v1.sh
+INPUT:   datasets/datasetv4_merged_cleaned_engineered.csv
+
+PURPOSE
+  This is the core model of the project. It answers: "Which Naive Bayes variant
+  best identifies benign lesions that closely resemble malignant melanoma?"
+
+  Two classifiers are trained and compared:
+    GaussianNB     — works directly on the raw numeric feature values.
+    CategoricalNB  — works on categorized (binned) versions of the same features
+                     (e.g., age becomes "Child", "Young Adult", "Middle Age",
+                     "Senior"). This mirrors the manual analysis approach.
+
+  The model trains ONLY on benign records. Malignant records are used only
+  to define the reference IQR windows — they are never used as training samples.
+
+HOW TO RUN
+
+  Option 1 — Using the shell script (recommended):
+    bash run_model_v1.sh
+
+  Option 2 — Running the Python file directly:
+    python models/model_v1/isic_model_v1_naive_bayes_comparison.py
+
+WHAT IT DOES (step by step)
+
+  1. Loads datasetv4 (all ~401,059 records).
+
+  2. Assigns range labels to every feature for every record
+     (e.g., a lesion with tbp_lv_norm_border = 3.1 gets label "High").
+
+  3. Generates 19 feature comparison charts showing the distribution of
+     each feature across benign and malignant populations side by side.
+     These are saved to outputs/v1_outputs/graphs/features/.
+
+  4. Computes the IQR reference window (Q1 to Q3) of each feature across
+     all 393 confirmed malignant records.
+
+  5. Scores every benign record: for each feature, checks if the benign
+     value falls inside the malignant IQR window. The similarity score is
+     the fraction of features that match (0.0 to 1.0).
+
+  6. Labels each benign record as "near_malignant" (1) if similarity >= 0.6,
+     or "not near-malignant" (0) otherwise.
+
+  7. Splits the benign dataset: 80% for training, 20% for testing.
+     Saves both splits to models/model_v1/processed_data/.
+
+  8. Trains GaussianNB on raw features, CategoricalNB on categorized features.
+
+  9. Evaluates both models on the test set and prints a comparison table
+     of F1, Accuracy, Precision, Recall, ROC-AUC, and PR-AUC.
+
+  10. Saves all outputs (see below).
+
+OUTPUTS
+
+  outputs/v1_outputs/graphs/features/
+    19 PNG charts (one per feature). Each chart shows a 2x2 grid:
+      - Top row: pie chart and bar chart of feature ranges for MALIGNANT records
+      - Bottom row: pie chart and bar chart of feature ranges for BENIGN records
+
+  outputs/v1_outputs/graphs/analysis/
+    confusion_matrices.png      Side-by-side confusion matrices (GaussianNB, CategoricalNB)
+    roc_comparison.png          ROC curve for both models overlaid
+    pr_comparison.png           Precision-Recall curve for both models overlaid
+    metrics_comparison.png      Bar chart of all 6 metrics side by side
+    probability_distributions.png  Histogram of predicted probabilities
+    similarity_distribution.png   Distribution of similarity scores with threshold line
+
+  outputs/v1_outputs/reports/
+    v1_readable_report.txt           Human-readable summary: dataset stats,
+                                     metrics table, confusion matrix breakdown,
+                                     and the full IQR reference windows.
+    v1_global_metrics.json           Machine-readable metrics in JSON format.
+    v1_naive_bayes_predictions.csv   Per-record predictions and probabilities
+                                     for every test set record.
+
+  models/model_v1/processed_data/
+    v1_train_benign_similarity.csv   Training split used by the model.
+    v1_test_benign_similarity.csv    Test split used for evaluation.
+
+READING THE RESULTS
+
+  Open outputs/v1_outputs/reports/v1_readable_report.txt for a complete summary.
+
+  Key metrics to look at:
+    f1        — Balance of precision and recall. Higher is better.
+    roc_auc   — Area under the ROC curve. Above 0.85 is strong.
+    pr_auc    — Area under the Precision-Recall curve. Useful for imbalanced data.
+
+  The report also lists the IQR reference windows — the exact Q1 and Q3 values
+  for each feature across the 393 malignant records. These define what the
+  model considers "malignant-like."
+
+  Example reference windows from a sample run:
+    age_approx               → [55.0, 70.0]   (Middle Age to Senior)
+    tbp_lv_norm_border       → [2.4, 4.9]     (Moderate to High irregularity)
+    tbp_lv_eccentricity      → [0.62, 0.84]   (High eccentricity)
+
+
+================================================================================
+8. MANUAL NAIVE BAYES CLASSIFIER (nb_classifier_model_v1)
+================================================================================
+
+FILE:    src/build_nb_classifier_dataset.py
+INPUT:   models/model_v1/processed_data/v1_train_benign_similarity.csv
+         models/model_v1/processed_data/v1_test_benign_similarity.csv
+OUTPUT:  nb_classifier_model_v1/
+
+PURPOSE
+  This script produces a human-readable version of the Naive Bayes calculation.
+  It shows, for every feature, how many benign records in each category are
+  labeled "near_malignant" (yes) versus not (no), along with conditional
+  probabilities. This is the manual analog of what CategoricalNB computes.
+
+HOW TO RUN (run AFTER Model V1)
+
+  python src/build_nb_classifier_dataset.py
+
+WHAT IT PRODUCES
+
+  For each of the 19 features, one CSV file is created, e.g.:
+
+    tbp_lv_norm_border_border_irregularity_near_malignant_counts.csv
+
+  Each file contains a table with columns:
+    - Category label (e.g., "Low", "Moderate", "High", "Very High")
+    - Count of records where near_malignant = yes
+    - Count of records where near_malignant = no
+    - P(category | yes): probability of this category given near-malignant
+    - P(category | no): probability of this category given not near-malignant
+
+  These probabilities are the direct inputs to Categorical Naive Bayes.
+
+  nb_classifier_model_v1.xlsx — All 19 feature tables compiled into a single
+  Excel workbook with one sheet per feature. This is the most convenient
+  format for reviewing or presenting the manual NB analysis.
+
+  v1_benign_near_malignant_similarity_full.csv — The full combined dataset
+  with continuous features replaced by category labels and near_malignant
+  replaced by "yes"/"no". Useful for manual inspection.
+
+INTERPRETING THE TABLES
+  A high P(category | yes) for a particular category means records in that
+  category are more likely to be near-malignant. For example, if "High"
+  border irregularity shows P(High | yes) = 0.45, that category is a strong
+  indicator of malignant similarity.
+
+
+================================================================================
+9. MODEL V2 — BALANCED BAGGING (COMPARATIVE)
+================================================================================
+
+FILE:    models/model_v2/isic_model_v2_balanced_bagging.py
+RUNNER:  run_model_v2.sh
+INPUT:   datasets/datasetv4_merged_cleaned_engineered.csv
+
+PURPOSE
+  Model V2 is a comparative benchmark. Unlike V1, it trains on both benign
+  AND malignant records, using a balanced undersampling ensemble (bagging).
+  Each "bag" contains all available malignant training rows plus a random
+  benign subset, controlling the class ratio. Multiple bags are averaged
+  to produce a final malignancy probability.
+
+  This answers: "How does a standard bagging approach with real malignant
+  training labels compare to the IQR similarity approach of V1?"
+
+CONFIGURABLE RATIOS
+  V2 is designed to run at multiple benign-to-malignant ratios so you can
+  see how the class balance affects model performance. The default ratios
+  are 5:1, 10:1, and 20:1.
+
+HOW TO RUN
+
+  Default (runs all three ratios: 5, 10, 20):
+    bash run_model_v2.sh
+
+  Custom ratios — edit the RATIOS line in run_model_v2.sh before running:
+    RATIOS="${RATIOS:-5,10,20}"   ← change these numbers as desired
+    Then run: bash run_model_v2.sh
+
+  Or pass ratios inline without editing the file:
+    RATIOS=5,10 bash run_model_v2.sh
+
+  Or edit the default fallback directly in the Python file (line ~65):
+    RATIOS = [int(r) for r in os.getenv("RATIOS", "5,10,20").split(",")]
+                                                    ↑ change this string
+
+OUTPUTS
+  For each ratio, a separate output folder is created:
+    outputs/v2_outputs/v2_outputs_ratio5_1/
+    outputs/v2_outputs/v2_outputs_ratio10_1/
+    outputs/v2_outputs/v2_outputs_ratio20_1/
+
+  Each ratio folder contains:
+    graphs/     Charts: confusion matrix, ROC curve, PR curve, feature importance
+    reports/
+      v2_metrics.json          Numeric metrics in JSON
+      v2_readable_report.txt   Human-readable summary for that ratio
+
+
+================================================================================
+10. MODEL V3 — REPEATED PATIENT-GROUP CV (COMPARATIVE)
+================================================================================
+
+FILE:    models/model_v3/isic_model_v3_repeated_group_cv.py
+RUNNER:  run_model_v3.sh
+INPUT:   datasets/datasetv4_merged_cleaned_engineered.csv
+
+PURPOSE
+  Model V3 extends V2 with a more rigorous evaluation strategy: repeated
+  patient-group cross-validation. Because some patients have multiple lesion
+  images in the dataset, a naive random split might put images from the same
+  patient in both train and test, which inflates performance estimates.
+  V3 ensures each patient appears in only one fold at a time, giving a more
+  honest estimate of how the model generalizes to unseen patients.
+
+  This answers: "Does the balanced bagging approach hold up under stricter,
+  patient-aware cross-validation?"
+
+CONFIGURABLE RATIOS
+  Same as V2 — default ratios are 5:1, 10:1, and 20:1.
+
+HOW TO RUN
+
+  Default (all three ratios):
+    bash run_model_v3.sh
+
+  Custom ratios — edit run_model_v3.sh:
+    RATIOS="${RATIOS:-5,10,20}"   ← change as desired
+
+  Or edit the default fallback directly in the Python file (line ~74):
+    RATIOS = [int(r) for r in os.getenv("RATIOS", "5,10,20").split(",")]
+                                                    ↑ change this string
+
+OUTPUTS
+  Structured identically to V2:
+    outputs/v3_outputs/v3_outputs_ratio5_1/
+    outputs/v3_outputs/v3_outputs_ratio10_1/
+    outputs/v3_outputs/v3_outputs_ratio20_1/
+
+  Each folder contains graphs/ and reports/ with metrics and visualizations.
+
+FAST SMOKE TEST (for quick verification without full run)
+  To run a lightweight test of the pipeline using fewer folds and bags:
+    N_SPLITS=3 N_REPEATS=1 N_BAGS=3 N_ESTIMATORS=40 bash run_model_v3.sh
+
+
+================================================================================
+11. MODEL V4 — LIGHTGBM RATIO-BALANCED (EXPERIMENTAL)
+================================================================================
+
+FILE:    models/model_v4/isic_model_v4_ratio_balanced.py
+RUNNER:  run_model_v4.sh
+INPUT:   datasets/datasetv4_merged_cleaned_engineered.csv
+
+PURPOSE
+  Model V4 is the most experimental model. It uses LightGBM (a gradient
+  boosted tree algorithm) instead of Naive Bayes or bagged decision trees.
+  It also uses a two-pronged class balancing strategy:
+    - SMOTE (Synthetic Minority Oversampling): generates synthetic malignant
+      training samples to increase the number of malignant records.
+    - Random undersampling: reduces benign records to hit the target ratio.
+
+  V4 is tested across a wide range of ratios (including extreme ones like
+  500:1, 700:1, and 1000:1) to explore how much class imbalance LightGBM
+  can handle while maintaining predictive power.
+
+CONFIGURABLE RATIOS
+  Default ratios: 5, 10, 15, 20, 25, 30, 500, 600, 700, 1000
+
+HOW TO RUN
+
+  Default (all default ratios — may take significant time):
+    bash run_model_v4.sh
+
+  Custom ratios — edit run_model_v4.sh:
+    RATIOS="${RATIOS:-5,10,15,20,25,30,500,600,700,1000}"   ← change as desired
+
+  Or edit the default fallback directly in the Python file (line ~75):
+    RATIOS = [int(r) for r in os.getenv("RATIOS", "5,10,15,20,25,30,500,600,700,1000").split(",")]
+                                                    ↑ change this string
+
+  Example for just a few ratios:
+    RATIOS=5,10,20 bash run_model_v4.sh
+
+OUTPUTS
+  One folder per ratio:
+    outputs/v4_outputs/v4_outputs_ratio5_1/
+    outputs/v4_outputs/v4_outputs_ratio10_1/
+    ...
+    outputs/v4_outputs/v4_outputs_ratio1000_1/
+
+  Each folder contains graphs/ and reports/ with metrics and visualizations.
+  A summary comparison across all ratios is saved as:
+    outputs/v4_outputs/v4_ratio_model_registry.csv
+
+FAST SMOKE TEST
+  To run only light ratios for a quick test:
+    RATIOS=5,10 bash run_model_v4.sh
+
+
+================================================================================
+12. UNDERSTANDING THE OUTPUTS
+================================================================================
+
+GRAPHS (all models)
+  confusion_matrix.png
+    A 2x2 grid showing correct vs incorrect predictions:
+      True Positive (TP):  predicted near-malignant, actually near-malignant
+      True Negative (TN):  predicted not near-malignant, actually not
+      False Positive (FP): predicted near-malignant, actually not
+      False Negative (FN): predicted not near-malignant, actually near-malignant
+
+  roc_*.png
+    The Receiver Operating Characteristic curve. The closer the curve is to
+    the top-left corner, the better the model. The AUC (area under the curve)
+    summarizes this — values above 0.85 indicate strong performance.
+
+  pr_*.png / precision_recall_*.png
+    The Precision-Recall curve. Precision is how often the model's positive
+    predictions are correct. Recall is how many true positives the model
+    finds. These two goals trade off against each other.
+
+  feature_importance.png (V2, V3, V4 only)
+    Which features contributed most to the model's decisions. Taller bars mean
+    that feature was more decisive.
+
+REPORTS
+  *_readable_report.txt
+    A plain-text summary you can open in any text editor. Contains:
+    - Dataset sizes (train/test split counts)
+    - Metric table (F1, Accuracy, Precision, Recall, ROC-AUC, PR-AUC)
+    - Confusion matrix breakdown
+    - IQR reference windows (V1 only)
+
+  *_metrics.json
+    The same metrics in machine-readable JSON format. Useful for further
+    analysis or comparison across models.
+
+  *_predictions.csv (V1)
+    The raw test set predictions: actual label, predicted label, and predicted
+    probability for each record. Sorted by predicted probability descending,
+    so the "most malignant-looking" benign records appear first.
+
+COMPARING MODELS
+  To compare V1 through V4, look at these metrics side by side:
+    - ROC-AUC: overall discriminative ability
+    - PR-AUC:  how well each model finds true near-malignant cases
+    - F1:      combined precision and recall balance
+
+  The readable report for each model includes the full metric table.
+  For V4, the registry file v4_ratio_model_registry.csv lists all ratio runs
+  and their metrics in one place, making ratio comparison easy.
+
+
+================================================================================
+13. FEATURE REFERENCE
+================================================================================
+
+This table shows the category bins used for each feature in Model V1 and the
+manual Naive Bayes analysis.
+
+  Feature                     Categories (low → high)
+  ---------------------------  -----------------------------------------------
+  age_approx                   Child (0-20), Young Adult (21-40),
+                                Middle Age (41-60), Senior (61-100)
+
+  clin_size_long_diam_mm       Very Small (0-4mm), Small (4-6mm),
+                                Medium (6-10mm), Large (10mm+)
+
+  tbp_lv_area_perim_ratio      Low, Medium, High, Very High
+
+  tbp_lv_norm_border           Low, Moderate, High, Very High
+                                (border irregularity score)
+
+  tbp_lv_symm_2axis            Asymmetric, Moderate, Symmetric, Very Symmetric
+
+  tbp_lv_eccentricity          Low, Moderate, High, Very High
+                                (0 = circle, 1 = line)
+
+  tbp_lv_color_std_mean        Low, Moderate, High, Very High
+                                (internal color variation)
+
+  tbp_lv_norm_color            Low, Moderate, High, Very High
+
+  tbp_lv_deltaLBnorm           Very Low, Low, Moderate, High
+                                (lightness contrast vs surrounding skin)
+
+  tbp_lv_radial_color_std_max  Low, Moderate, High, Very High
+
+  tbp_lv_nevi_confidence       Low (0-0.33), Moderate (0.33-0.67),
+                                High (0.67-1.0)
+
+  color_contrast_3d            Low, Moderate, High, Very High (engineered)
+
+  elongation                   Compact (0-0.5), Moderate (0.5-0.75),
+                                Elongated (0.75-1.0) (engineered)
+
+  nevi_color_tension           Low, Moderate, High, Very High (engineered)
+
+  log_area                     Very Small, Small, Medium, Large (engineered)
+
+  stdL_ratio                   Low, Moderate, High, Very High (engineered)
+
+  compactness                  Low, Moderate, High, Very High (engineered)
+
+  chroma_contrast              Low, Moderate, High, Very High (engineered)
+
+  radial_color_ratio           Low, Moderate, High, Very High (engineered)
+
+
+================================================================================
+14. TROUBLESHOOTING
+================================================================================
+
+PROBLEM: "python: command not found"
+SOLUTION: Try "python3" instead of "python". On some systems Python 3 is
+  registered as python3. If still not found, install Python from python.org.
+
+PROBLEM: "No such file or directory: datasets/datasetv4_merged_cleaned_engineered.csv"
+SOLUTION: You have not run the preprocessing pipeline yet. Run:
+  python src/data_preprocessing_pipeline.py
+
+PROBLEM: "No such file or directory: models/model_v1/processed_data/v1_train_benign_similarity.csv"
+SOLUTION: You have not run Model V1 yet. The build_nb_classifier_dataset.py
+  script requires V1 to have been run first. Run:
+  bash run_model_v1.sh
+
+PROBLEM: "ModuleNotFoundError: No module named 'sklearn'" (or similar)
+SOLUTION: The virtual environment is not activated, or packages were not
+  installed. Make sure you:
+    1. Activated the environment: source .venv/bin/activate
+    2. Installed packages: pip install -r requirements.txt
+
+PROBLEM: "Permission denied" when running a .sh file
+SOLUTION: Make the script executable first:
+  chmod +x run_model_v1.sh
+  Then try again: bash run_model_v1.sh
+
+PROBLEM: V4 is taking a very long time
+SOLUTION: V4 runs many ratios by default (including extreme ones like 1000:1)
+  which require significant computation. Limit to fewer ratios:
+  RATIOS=5,10 bash run_model_v4.sh
+
+PROBLEM: The output graphs folder is empty after running a model
+SOLUTION: Check the terminal output for any Python errors or warnings.
+  The script prints progress as it runs. If it stopped early, scroll up
+  to find the error message and address it.
+
+PROBLEM: Running build_nb_classifier_dataset.py produces empty tables
+SOLUTION: Make sure Model V1 has been fully run first. The script reads the
+  train/test CSV files that V1 generates in models/model_v1/processed_data/.
+
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================

@@ -1,0 +1,15 @@
+{
+  "n_test": 80212,
+  "n_malignant_test": 79,
+  "n_benign_test": 80133,
+  "pr_auc": 0.07489247321730969,
+  "roc_auc": 0.9449434302813345,
+  "best_f1_threshold": 0.9547597221411148,
+  "best_f1": 0.1602787456445993,
+  "precision_at_best_f1": 0.11057692307692307,
+  "recall_at_best_f1": 0.2911392405063291,
+  "tp_at_best_f1": 23,
+  "fp_at_best_f1": 185,
+  "fn_at_best_f1": 56,
+  "tn_at_best_f1": 79948
+}

@@ -1,0 +1,83 @@
+================================================================================
+ISIC 2024 — V4 LightGBM Model with Benign:Malignant Ratio-Balanced Data
+================================================================================
+
+DATASET
+  Total train rows   : 300,000
+  Malignant          : 27,272  (SMOTE synthetic oversampled)
+  Benign             : 272,728  (randomly undersampled)
+  Benign:Malignant   : 10:1
+  Test set (benign)  : 80,134
+
+MODEL
+  Algorithm          : LightGBM
+  CV design          : StratifiedKFold (k=5)
+  n_estimators       : 1000
+  min_child_samples  : 75
+  scale_pos_weight   : 4.00  (imbalance weight)
+  Interaction feats  : 5
+  Total features     : 36
+
+THRESHOLD POLICY
+  Optimal threshold  : 0.604162  (F1-optimal on CV)
+  Screening threshold: 0.977709  (target recall 50%)
+
+OUT-OF-FOLD METRICS (Cross-Validation on Training Set)
+  PR-AUC             : 0.996660
+  ROC-AUC            : 0.999599
+  F1                 : 0.974504
+  Precision          : 0.977073
+  Recall             : 0.971949
+  Confusion matrix   : TP=26507, FP=622, FN=765, TN=272106
+
+MEAN ± STD ACROSS FOLDS
+  metric             mean        std
+  --------------------------------
+  f1             0.975280   0.000864
+  accuracy       0.995500   0.000141
+  precision      0.976640   0.001163
+  recall         0.973860   0.002314
+  pr_auc         0.996660   0.000207
+
+TEST SET PREDICTIONS (Unseen Benign Records)
+  Records scored     : 80,134
+  Prob mean          : 0.017418
+  Prob median        : 0.002660
+  Prob max           : 0.961358
+  Screening flagged  : 0  (0.0%)
+
+TOP 20 FEATURES
+  rank   feature                               importance
+  -------------------------------------------------------
+  1      age_approx                                1742.6
+  2      tbp_lv_location_simple_Torso Front         571.4
+  3      tbp_lv_nevi_confidence                     554.4
+  4      anatom_site_general_lower extremity        550.8
+  5      nevi_color_tension                         545.4
+  6      color_contrast_3d                          521.6
+  7      tbp_lv_deltaLBnorm                         516.6
+  8      clin_size_long_diam_mm                     400.8
+  9      tbp_lv_eccentricity                        397.2
+  10     log_area                                   386.4
+  11     anatom_site_general_upper extremity        354.4
+  12     anatom_site_general_head/neck              353.2
+  13     stdL_ratio                                 345.0
+  14     chroma_contrast                            325.8
+  15     color_x_size                               323.8
+  16     anatom_site_general_posterior torso        308.0
+  17     elongation                                 307.8
+  18     radial_color_ratio                         306.2
+  19     chroma_x_symm                              291.2
+  20     tbp_lv_location_simple_Torso Back          287.0
+
+OUTPUT FILES
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v4_outputs/v4_outputs_ratio10_1/reports/v4_readable_report.txt
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v4_outputs/v4_outputs_ratio10_1/reports/v4_global_metrics.json
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v4_outputs/v4_outputs_ratio10_1/reports/v4_ratio_10_fold_metrics.csv
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v4_outputs/v4_outputs_ratio10_1/reports/v4_ratio_10_feature_importance.csv
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v4_outputs/v4_outputs_ratio10_1/reports/v4_ratio_10_benign_risk_predictions.csv
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v4_outputs/v4_outputs_ratio10_1/graphs/v4_oof_confusion_matrix.png
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v4_outputs/v4_outputs_ratio10_1/graphs/v4_oof_precision_recall_curve.png
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v4_outputs/v4_outputs_ratio10_1/graphs/v4_feature_importance.png
+
+================================================================================

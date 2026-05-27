@@ -1,0 +1,79 @@
+========================================================================
+ISIC 2024 — V2 Balanced Bagging Metadata Model (20:1 Ratio)
+========================================================================
+
+DATASET
+  Total rows        : 401,059
+  Benign            : 400,666
+  Malignant         : 393
+  Train rows        : 320,847
+  Test rows         : 80,212
+  Test malignant    : 79
+  Test benign       : 80,133
+  Split strategy     : stratified random (80/20)
+
+MODEL
+  Algorithm         : LightGBM balanced undersampling ensemble
+  Bags              : 30
+  Benign ratio/bag  : 20:1
+  Estimators/bag    : 200
+  Original features : 48 non-ID metadata + engineered features
+  Transformed feats : 81
+
+MAIN TEST METRICS
+  PR-AUC            : 0.080163
+  ROC-AUC           : 0.945685
+  Best-F1 threshold : 0.933734
+  F1                : 0.191882
+  Precision         : 0.135417
+  Recall            : 0.329114
+  Confusion matrix  : TP=26, FP=166, FN=53, TN=79967
+
+TOP-K RECALL
+ top_k  malignant_caught  top_k_recall  top_k_precision
+   100                16      0.202532         0.160000
+   500                35      0.443038         0.070000
+  1000                41      0.518987         0.041000
+  5000                59      0.746835         0.011800
+   802                39      0.493671         0.048628
+  4010                57      0.721519         0.014214
+
+HIGH-RECALL OPERATING POINTS
+  These are evaluation operating points. In a final system, choose thresholds using validation/CV, not the test set.
+ target_recall  threshold  actual_recall  precision  tp    fp  fn    tn
+           0.7   0.543783       0.708861   0.015923  56  3461  23 76672
+           0.8   0.254505       0.822785   0.007828  65  8239  14 71894
+           0.9   0.074475       0.911392   0.003877  72 18499   7 61634
+
+TOP 20 FEATURES
+ rank                feature  importance  importance_std
+    1               tbp_lv_H  121.766667       11.660999
+    2 clin_size_long_diam_mm  121.733333       15.070796
+    3               tbp_lv_y  108.100000       13.864463
+    4          tbp_lv_deltaB   84.833333       10.295900
+    5     tbp_lv_deltaLBnorm   83.200000        9.031058
+    6               tbp_lv_B   81.466667        9.464789
+    7             age_approx   80.566667       11.353952
+    8               tbp_lv_z   74.866667       11.675425
+    9          tbp_lv_deltaA   74.200000       10.176443
+   10      color_contrast_3d   72.833333        8.575482
+   11     tbp_lv_minorAxisMM   72.266667       10.763932
+   12 tbp_lv_nevi_confidence   72.066667       11.966435
+   13         tbp_lv_stdLExt   67.766667       12.427613
+   14            tbp_lv_Aext   66.366667        7.859107
+   15         tbp_lv_areaMM2   62.633333        8.897503
+   16            tbp_lv_Hext   62.000000       12.000000
+   17            tbp_lv_Lext   60.966667        9.572472
+   18     tbp_lv_perimeterMM   60.466667        8.409254
+   19     radial_color_ratio   59.266667        8.625286
+   20               tbp_lv_x   54.866667        9.131387
+
+OUTPUT FILES
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v2_outputs/v2_outputs_ratio20_1/reports/v2_metrics_summary.csv
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v2_outputs/v2_outputs_ratio20_1/reports/v2_top_k_recall.csv
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v2_outputs/v2_outputs_ratio20_1/reports/v2_high_recall_operating_points.csv
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v2_outputs/v2_outputs_ratio20_1/reports/v2_feature_importance.csv
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v2_outputs/v2_outputs_ratio20_1/reports/v2_test_predictions_ranked.csv
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v2_outputs/v2_outputs_ratio20_1/graphs/v2_precision_recall_curve.png
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v2_outputs/v2_outputs_ratio20_1/graphs/v2_confusion_matrix_best_f1.png
+  /home/lumpia/Documents/School/Third Year/2nd_Sem/CMSC_170/melanoma-feature-analysis/outputs/v2_outputs/v2_outputs_ratio20_1/graphs/v2_feature_importance.png
