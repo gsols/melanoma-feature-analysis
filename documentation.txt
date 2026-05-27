@@ -15,9 +15,10 @@ TABLE OF CONTENTS
   9. Model V2 — Balanced Bagging (Comparative)
  10. Model V3 — Repeated Patient-Group CV (Comparative)
  11. Model V4 — LightGBM Ratio-Balanced (Experimental)
- 12. Understanding the Outputs
- 13. Feature Reference
- 14. Troubleshooting
+ 12. Model V5 — LightGBM Optuna-Tuned + Platt Calibration (Comparative)
+ 13. Understanding the Outputs
+ 14. Feature Reference
+ 15. Troubleshooting
 
 
 ================================================================================
@@ -121,8 +122,11 @@ melanoma-feature-analysis/
 │   ├── model_v3/
 │   │   ├── isic_model_v3_repeated_group_cv.py
 │   │   └── processed_data/
-│   └── model_v4/
-│       └── isic_model_v4_ratio_balanced.py
+│   ├── model_v4/
+│   │   └── isic_model_v4_ratio_balanced.py
+│   └── model_v5/
+│       ├── isic_model_v5_optuna_lgbm_platt.py
+│       └── processed_data/
 │
 ├── nb_classifier_model_v1/            Manual Naive Bayes frequency tables
 │   ├── nb_classifier_model_v1.xlsx    Combined Excel workbook (all features)
@@ -145,13 +149,17 @@ melanoma-feature-analysis/
 │   │   ├── v3_outputs_ratio5_1/
 │   │   ├── v3_outputs_ratio10_1/
 │   │   └── v3_outputs_ratio20_1/
-│   └── v4_outputs/
-│       └── v4_outputs_ratio<N>_1/    One folder per ratio tested
+│   ├── v4_outputs/
+│   │   └── v4_outputs_ratio<N>_1/    One folder per ratio tested
+│   └── v5_outputs/
+│       ├── reports/    v5_readable_report.txt + metrics + predictions
+│       └── graphs/     Optuna plots + calibration + ROC/PR + risk tiers
 │
 ├── run_model_v1.sh   Run script for Model V1
 ├── run_model_v2.sh   Run script for Model V2 (configurable ratios)
 ├── run_model_v3.sh   Run script for Model V3 (configurable ratios)
 ├── run_model_v4.sh   Run script for Model V4 (configurable ratios)
+├── run_model_v5.sh   Run script for Model V5 (configurable trials/folds/recall target)
 └── requirements.txt  Python package dependencies
 
 
@@ -257,8 +265,8 @@ STEP-BY-STEP ENVIRONMENT SETUP
     pip install -r requirements.txt
 
     This installs all libraries listed in requirements.txt, including
-    scikit-learn, pandas, numpy, matplotlib, seaborn, openpyxl, and lightgbm.
-    This may take a few minutes the first time.
+    scikit-learn, pandas, numpy, matplotlib, seaborn, openpyxl, lightgbm,
+    imbalanced-learn, and optuna. This may take a few minutes the first time.
 
   Step 5. Verify the installation (optional but recommended).
 
@@ -329,10 +337,11 @@ you need to regenerate all data and outputs from scratch.
     bash run_model_v2.sh
     bash run_model_v3.sh
     bash run_model_v4.sh
+    bash run_model_v5.sh
 
     These can be run in any order, independently of each other.
     They do not depend on Model V1 output — only on datasetv4.
-    See Sections 9, 10, and 11 for details on each.
+    See Sections 9, 10, 11, and 12 for details on each.
 
 
 ================================================================================
@@ -644,7 +653,117 @@ FAST SMOKE TEST
 
 
 ================================================================================
-12. UNDERSTANDING THE OUTPUTS
+12. MODEL V5 — LIGHTGBM OPTUNA-TUNED + PLATT CALIBRATION (COMPARATIVE)
+================================================================================
+
+FILE:    models/model_v5/isic_model_v5_optuna_lgbm_platt.py
+RUNNER:  run_model_v5.sh
+INPUT:   datasets/datasetv4_merged_cleaned_engineered.csv
+
+PURPOSE
+  Model V5 is a comparative model that extends V4 with three key additions
+  not present in any prior model:
+
+  1. OPTUNA HYPERPARAMETER SEARCH
+     Optuna runs 50 trials of a joint nine-parameter search using 3-fold
+     StratifiedKFold CV on the full 400k-row dataset. Searching on full data
+     (rather than a subsample) ensures the discovered hyperparameters generalise
+     to the true data distribution. The objective metric is mean PR-AUC across
+     3 folds — appropriate for extreme class imbalance.
+
+     Parameters searched jointly:
+       sampling_strategy  (SMOTE)
+       scale_pos_weight   (LightGBM)
+       learning_rate, num_leaves, min_child_samples
+       subsample, colsample_bytree, reg_alpha, reg_lambda
+
+  2. PLATT SCALING CALIBRATION
+     Raw OOF probabilities are monotone-transformed via logistic regression
+     (Platt scaling) so that the output numbers represent true probabilities.
+     The regularisation strength C is selected by 5-fold Brier-score CV on
+     the OOF predictions.
+
+  3. THREE-TIER RISK SYSTEM
+     Rather than a single threshold, V5 assigns every record one of three tiers:
+
+     Low risk    — probability below Youden's J threshold
+     Medium risk — between Youden's J and the recall-constraint threshold
+     High risk   — above the recall-constraint threshold
+
+     Low|Medium boundary: Youden's J (maximises sensitivity + specificity).
+     Medium|High boundary: the lowest threshold that captures at least
+     RECALL_TARGET (default 50%) of all confirmed malignant records.
+
+  V5 uses all 8 engineered features from datasetv4.
+
+CONFIGURABLE SETTINGS (via environment variables)
+
+  N_TRIALS      Number of Optuna trials.    Default: 50
+  N_FOLDS       CV folds for final model.   Default: 5
+  RECALL_TARGET Minimum recall for High tier. Default: 0.50
+
+HOW TO RUN
+
+  Default (50 trials, 5-fold CV, 50% recall target):
+    bash run_model_v5.sh
+
+  Quick smoke test (10 trials, 3 folds):
+    N_TRIALS=10 N_FOLDS=3 bash run_model_v5.sh
+
+  Stricter High-tier boundary:
+    RECALL_TARGET=0.40 bash run_model_v5.sh
+
+  Or run the Python script directly:
+    python models/model_v5/isic_model_v5_optuna_lgbm_platt.py
+
+OUTPUTS
+
+  outputs/v5_outputs/reports/
+    v5_readable_report.txt        Human-readable summary of all results.
+    v5_global_metrics.json        Machine-readable metrics in JSON format.
+    v5_fold_metrics.csv           Per-fold PR-AUC, AUROC, best_iteration.
+    v5_optuna_trials.csv          All Optuna trial results and parameters.
+    v5_threshold_sensitivity.csv  High-tier threshold analysis across 5 recall targets.
+    v5_risk_tiers.csv             Record counts, malignant counts, sensitivity, PPV per tier.
+    v5_benign_risk_predictions.csv  Per-record calibrated probability and risk tier,
+                                    sorted by probability descending (rank 1 = highest risk).
+
+  outputs/v5_outputs/graphs/
+    v5_optuna_param_importance.png  Which parameters Optuna found most influential.
+    v5_optuna_trial_history.png     PR-AUC per trial with best value marked.
+    v5_fold_results.png             Bar chart of PR-AUC and AUROC per fold.
+    v5_calibration_curve.png        Raw vs Platt-calibrated reliability diagrams.
+    v5_roc_pr_curves.png            ROC curve (with Youden's J) + PR curve (with recall target).
+    v5_risk_tier_distribution.png   Record counts, malignant counts, and probability histogram
+                                    per tier.
+    v5_oof_confusion_matrix.png     Confusion matrix at the High-tier threshold.
+
+  models/model_v5/processed_data/
+    v5_full_scored.csv              Full datasetv4 with calibrated probabilities and tier labels.
+
+READING THE RESULTS
+
+  Open outputs/v5_outputs/reports/v5_readable_report.txt for a complete summary.
+
+  Key metrics:
+    PR-AUC (calibrated OOF) — discrimination power after calibration
+    AUROC  (calibrated OOF) — overall ranking ability (above 0.85 is strong)
+    Brier score             — probability accuracy (lower is better; compare to base rate)
+    High-tier sensitivity   — fraction of malignant records caught by the High tier
+    High-tier PPV           — fraction of High-tier records that are actually malignant
+
+  The threshold sensitivity table shows the tradeoff between High-tier recall and
+  tier size. For example, raising RECALL_TARGET from 0.50 to 0.60 catches more
+  malignant cases but flags roughly twice as many benign records.
+
+ADDITIONAL DEPENDENCIES
+  Model V5 requires two packages beyond the base set:
+    pip install imbalanced-learn optuna
+  Both are included in requirements.txt.
+
+
+================================================================================
+13. UNDERSTANDING THE OUTPUTS (ALL MODELS)
 ================================================================================
 
 GRAPHS (all models)
@@ -687,7 +806,7 @@ REPORTS
     so the "most malignant-looking" benign records appear first.
 
 COMPARING MODELS
-  To compare V1 through V4, look at these metrics side by side:
+  To compare V1 through V5, look at these metrics side by side:
     - ROC-AUC: overall discriminative ability
     - PR-AUC:  how well each model finds true near-malignant cases
     - F1:      combined precision and recall balance
@@ -695,10 +814,11 @@ COMPARING MODELS
   The readable report for each model includes the full metric table.
   For V4, the registry file v4_ratio_model_registry.csv lists all ratio runs
   and their metrics in one place, making ratio comparison easy.
+  For V5, the threshold_sensitivity.csv shows the High-tier recall/PPV tradeoff.
 
 
 ================================================================================
-13. FEATURE REFERENCE
+14. FEATURE REFERENCE
 ================================================================================
 
 This table shows the category bins used for each feature in Model V1 and the
@@ -754,7 +874,7 @@ manual Naive Bayes analysis.
 
 
 ================================================================================
-14. TROUBLESHOOTING
+15. TROUBLESHOOTING
 ================================================================================
 
 PROBLEM: "python: command not found"
@@ -785,6 +905,26 @@ PROBLEM: V4 is taking a very long time
 SOLUTION: V4 runs many ratios by default (including extreme ones like 1000:1)
   which require significant computation. Limit to fewer ratios:
   RATIOS=5,10 bash run_model_v4.sh
+
+PROBLEM: V5 Optuna step is taking too long
+SOLUTION: V5 runs 50 Optuna trials by default, each involving a 3-fold CV on
+  the full 400k-row dataset (~2–3 hours total). For a quick test run:
+  N_TRIALS=10 N_FOLDS=3 bash run_model_v5.sh
+
+PROBLEM: "ModuleNotFoundError: No module named 'imblearn'"
+SOLUTION: imbalanced-learn is required by Models V4 and V5. Install it:
+  pip install imbalanced-learn
+  (or re-run: pip install -r requirements.txt)
+
+PROBLEM: "ModuleNotFoundError: No module named 'optuna'"
+SOLUTION: optuna is required by Model V5. Install it:
+  pip install optuna
+  (or re-run: pip install -r requirements.txt)
+
+PROBLEM: V5 raises "No sensitivity row for recall target X"
+SOLUTION: The RECALL_TARGET value must match one of the five targets analysed
+  internally (0.30, 0.40, 0.50, 0.60, 0.75). Example:
+  RECALL_TARGET=0.40 bash run_model_v5.sh
 
 PROBLEM: The output graphs folder is empty after running a model
 SOLUTION: Check the terminal output for any Python errors or warnings.

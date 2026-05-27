@@ -37,7 +37,8 @@ melanoma-feature-analysis/
 │   ├── model_v1/   isic_model_v1_naive_bayes_comparison.py   # Main model
 │   ├── model_v2/   isic_model_v2_balanced_bagging.py
 │   ├── model_v3/   isic_model_v3_repeated_group_cv.py
-│   └── model_v4/   isic_model_v4_ratio_balanced.py
+│   ├── model_v4/   isic_model_v4_ratio_balanced.py
+│   └── model_v5/   isic_model_v5_optuna_lgbm_platt.py
 │
 ├── nb_classifier_model_v1/                          # Manual NB frequency tables
 │   ├── nb_classifier_model_v1.xlsx                  # All features in one Excel workbook
@@ -47,12 +48,14 @@ melanoma-feature-analysis/
 │   ├── v1_outputs/   graphs/ + reports/
 │   ├── v2_outputs/   v2_outputs_ratio{5,10,20}_1/
 │   ├── v3_outputs/   v3_outputs_ratio{5,10,20}_1/
-│   └── v4_outputs/   v4_outputs_ratio<N>_1/
+│   ├── v4_outputs/   v4_outputs_ratio<N>_1/
+│   └── v5_outputs/   reports/ + graphs/
 │
 ├── run_model_v1.sh
 ├── run_model_v2.sh
 ├── run_model_v3.sh
 ├── run_model_v4.sh
+├── run_model_v5.sh
 └── requirements.txt
 ```
 
@@ -91,10 +94,10 @@ source .venv/Scripts/activate      # Windows (Git Bash)
 pip install -r requirements.txt
 
 # 5. Verify (optional)
-python -c "import sklearn, pandas, numpy, matplotlib, lightgbm, openpyxl; print('All packages OK')"
+python -c "import sklearn, pandas, numpy, matplotlib, lightgbm, openpyxl, imblearn, optuna; print('All packages OK')"
 ```
 
-**Dependencies:** scikit-learn 1.8, pandas 3.0, numpy 2.4, matplotlib 3.10, seaborn 0.13, lightgbm 4.6, openpyxl 3.1, scipy 1.17
+**Dependencies:** scikit-learn 1.8, pandas 3.0, numpy 2.4, matplotlib 3.10, seaborn 0.13, lightgbm 4.6, openpyxl 3.1, scipy 1.17, imbalanced-learn 0.13, optuna 4.3
 
 ---
 
@@ -143,6 +146,7 @@ python src/build_nb_classifier_dataset.py
 bash run_model_v2.sh
 bash run_model_v3.sh
 bash run_model_v4.sh
+bash run_model_v5.sh
 ```
 
 ---
@@ -226,6 +230,29 @@ A summary across all ratios is saved to `outputs/v4_outputs/v4_ratio_model_regis
 
 ---
 
+### Model V5 — LightGBM Optuna-Tuned + Platt Calibration (Comparative)
+`models/model_v5/isic_model_v5_optuna_lgbm_platt.py`
+
+Key additions over V4:
+- **Optuna** searches all nine hyperparameters jointly on the **full 400k-row dataset** using 3-fold CV, so discovered parameters generalise to the true data distribution (V4 uses fixed parameters).
+- **Platt scaling** calibrates raw OOF probabilities to true probabilities; C is selected by 5-fold Brier-score CV.
+- **3-tier risk system**: Low / Medium / High using two principled thresholds:
+  - `Low|Medium` — Youden's J on the ROC curve (maximises sensitivity + specificity)
+  - `Medium|High` — minimum recall constraint on the PR curve (default: ≥ 50% of malignant cases)
+- Uses all **8 engineered features** from datasetv4.
+
+```bash
+bash run_model_v5.sh                          # default (50 trials, 5-fold CV)
+N_TRIALS=10 bash run_model_v5.sh              # quick smoke test
+RECALL_TARGET=0.40 bash run_model_v5.sh       # stricter High-tier boundary
+```
+
+**Outputs** (single folder — no ratio loop):
+- `outputs/v5_outputs/reports/` — readable report, metrics JSON, fold metrics, Optuna trial log, threshold sensitivity, risk tiers, per-record predictions
+- `outputs/v5_outputs/graphs/` — Optuna plots, fold bar charts, calibration curves, ROC/PR curves, risk tier distribution, confusion matrix
+
+---
+
 ## Features Analyzed (19 total)
 
 | Feature | Description |
@@ -299,5 +326,8 @@ datasetv4: 22 columns (19 numeric features + sex, anatomy site, location, label)
 | `ModuleNotFoundError: No module named 'sklearn'` | Activate the venv (`source .venv/bin/activate`) then `pip install -r requirements.txt` |
 | `Permission denied` on `.sh` file | Run `chmod +x run_model_v1.sh` then retry |
 | V4 is taking very long | Limit ratios: `RATIOS=5,10 bash run_model_v4.sh` |
+| V5 Optuna step is too slow | Run with fewer trials: `N_TRIALS=10 bash run_model_v5.sh` |
+| `ModuleNotFoundError: No module named 'imblearn'` | `pip install imbalanced-learn` (required by V4 and V5) |
+| `ModuleNotFoundError: No module named 'optuna'` | `pip install optuna` (required by V5) |
 | Output graphs folder is empty | Check terminal for Python errors — the script prints progress as it runs |
 | `build_nb_classifier_dataset.py` produces empty tables | Run Model V1 fully first (`bash run_model_v1.sh`) |
